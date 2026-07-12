@@ -2,7 +2,7 @@
 
 
 
-A powerful, versatile feedback analysis tool that transforms comments into actionable insights across any field. Hosted on Streamlit, this interactive dashboard empowers businesses, educators, developers, researchers, and individuals to uncover sentiment trends and drive data-driven decision-making anywhere, anytime.
+A powerful, versatile feedback analysis tool that transforms comments into actionable insights across any field. Hosted on Streamlit, this interactive dashboard empowers businesses, educators, developers, researchers, and individuals to uncover sentiment trends and drive data-driven decision-making anywhere, anytime. 
 
 ## Live Demo
 
