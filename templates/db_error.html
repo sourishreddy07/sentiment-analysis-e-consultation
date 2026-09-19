@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Database Error | MySQL Required{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-card">
+        <div class="error-icon">🔌</div>
+        <h1>MySQL Database Connection Required</h1>
+        <p class="error-lead">
+            The application requires an active MySQL database connection to log predictions and view historical analytics.
+        </p>
+
+        <div class="error-details-box">
+            <strong>System Diagnostic Message:</strong>
+            <pre>{{ error_message }}</pre>
+        </div>
+
+        <div class="troubleshooting-guide">
+            <h3>How to resolve this issue:</h3>
+            <ol>
+                <li>
+                    <strong>If using XAMPP:</strong> Open the XAMPP Control Panel and click the <strong>Start</strong> button next to <strong>MySQL</strong>.
+                </li>
+                <li>
+                    <strong>If using MySQL Service:</strong> Open Windows Services (or PowerShell as Administrator) and run:
+                    <code>net start MySQL</code> or <code>net start MySQL80</code>
+                </li>
+                <li>
+                    <strong>Verify Credentials in <code>.env</code>:</strong>
+                    Ensure your <code>DB_HOST</code> (default <code>localhost</code>), <code>DB_PORT</code> (default <code>3306</code>), <code>DB_USER</code> (default <code>root</code>), and <code>DB_PASSWORD</code> match your MySQL setup.
+                </li>
+            </ol>
+        </div>
+
+        <div class="error-actions">
+            <a href="{{ request.path }}" class="btn btn-primary btn-large">🔄 Retry Connection</a>
+            <a href="{{ url_for('index') }}" class="btn btn-outline">Go to Dashboard</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

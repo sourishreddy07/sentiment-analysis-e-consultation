@@ -1,0 +1,59 @@
+{
+    "best_model": "Linear SVM",
+    "best_f1": 93.75,
+    "dataset_total": 400,
+    "class_distribution": {
+        "positive": 206,
+        "negative": 194
+    },
+    "models_comparison": {
+        "Logistic Regression": {
+            "accuracy": 93.75,
+            "precision": 93.77,
+            "recall": 93.75,
+            "f1_score": 93.75,
+            "confusion_matrix": [
+                [
+                    36,
+                    3
+                ],
+                [
+                    2,
+                    39
+                ]
+            ]
+        },
+        "Multinomial Naive Bayes": {
+            "accuracy": 92.5,
+            "precision": 92.5,
+            "recall": 92.5,
+            "f1_score": 92.5,
+            "confusion_matrix": [
+                [
+                    36,
+                    3
+                ],
+                [
+                    3,
+                    38
+                ]
+            ]
+        },
+        "Linear SVM": {
+            "accuracy": 93.75,
+            "precision": 93.78,
+            "recall": 93.75,
+            "f1_score": 93.75,
+            "confusion_matrix": [
+                [
+                    37,
+                    2
+                ],
+                [
+                    3,
+                    38
+                ]
+            ]
+        }
+    }
+}

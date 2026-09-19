@@ -1,296 +1,1714 @@
-import streamlit as st
+"""
+Flask Web Application for E-Consultation Feedback Sentiment Analysis.
+
+Features:
+- NLTK preprocessing pipeline
+- TF-IDF feature extraction
+- Scikit-Learn supervised classifier
+- VADER baseline comparison
+- MySQL persistence
+- Chart.js dashboard support
+- Batch CSV sentiment analysis
+- Prediction history
+- CSV export
+"""
+
+import io
+import json
+import os
+
+import joblib
 import pandas as pd
-import plotly.express as px
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from wordcloud import WordCloud
-import matplotlib.pyplot as plt
 
-# Setting page configuration
-st.set_page_config(page_title="E-Consult Feedback Analysis", layout="wide")
-
-# Initialize VADER sentiment analyzer
-analyzer = SentimentIntensityAnalyzer()
-
-# Title and introduction
-st.title("E-Consult Feedback Analysis Dashboard 📊")
-st.markdown("""
-Unleash the power of feedback with the E-Consult Feedback Analysis Dashboard! This versatile tool empowers everyone—businesses, educators, developers, researchers, and individuals—to transform comments into actionable insights across any field, from healthcare and education to technology and creative arts. Upload your own CSV dataset or explore our sample dataset to uncover positive, negative, and neutral sentiment trends across diverse categories. With vibrant visualizations, intuitive filters, and automated sentiment analysis powered by VADER, this dashboard highlights strengths, identifies challenges, and fuels innovation. Hosted on Streamlit, it delivers seamless, data-driven decision-making for all, anywhere, anytime.
-""")
-
-# Load default dataset
-@st.cache_data
-def load_default_data():
-    try:
-        df = pd.read_csv("econsult_comments_dataset.csv")
-        df = df.dropna()
-        df['sentiment_label'] = df['sentiment_label'].str.lower().str.strip()
-        df['domain'] = df['domain'].str.lower().str.strip()
-        # Compute VADER scores for default dataset
-        df['vader_score'] = df['comment'].apply(lambda x: analyzer.polarity_scores(x)['compound'])
-        return df
-    except FileNotFoundError:
-        st.error("Default dataset 'econsult_comments_dataset.csv' not found in the project directory.")
-        return None
-
-# Process uploaded data and predict sentiment
-def process_uploaded_data(file):
-    try:
-        uploaded_df = pd.read_csv(file)
-        if 'comment' not in uploaded_df.columns:
-            st.error("Uploaded CSV must contain a 'comment' column.")
-            return None
-        uploaded_df = uploaded_df.dropna(subset=['comment'])
-        # Compute VADER scores
-        uploaded_df['vader_score'] = uploaded_df['comment'].apply(lambda x: analyzer.polarity_scores(x)['compound'])
-        # Predict sentiment if not provided
-        if 'sentiment_label' not in uploaded_df.columns:
-            uploaded_df['sentiment_label'] = uploaded_df['vader_score'].apply(
-                lambda x: 'positive' if x > 0.05 else 'negative' if x < -0.05 else 'neutral'
-            )
-        # Use 'general' as default domain if not provided
-        if 'domain' not in uploaded_df.columns:
-            uploaded_df['domain'] = 'general'
-        uploaded_df['sentiment_label'] = uploaded_df['sentiment_label'].str.lower().str.strip()
-        uploaded_df['domain'] = uploaded_df['domain'].str.lower().str.strip()
-        return uploaded_df
-    except Exception as e:
-        st.error(f"Error processing uploaded file: {str(e)}")
-        return None
-
-# Sidebar for data source selection and file upload
-st.sidebar.header("Data Source")
-data_source = st.sidebar.radio("Choose data source", ["Default Dataset", "Upload Your Dataset"])
-uploaded_df = None
-if data_source == "Upload Your Dataset":
-    uploaded_file = st.sidebar.file_uploader("Upload a CSV file (must include 'comment' column)", type=["csv"])
-    if uploaded_file:
-        uploaded_df = process_uploaded_data(uploaded_file)
-        if uploaded_df is not None:
-            st.sidebar.success("File uploaded successfully! Sentiment analysis applied.")
-
-# Load data based on user choice
-if data_source == "Upload Your Dataset" and uploaded_df is not None:
-    df = uploaded_df
-else:
-    df = load_default_data()
-    if df is None:
-        st.stop()
-
-# Filtering options
-st.sidebar.header("Filter Options")
-sentiment_filter = st.sidebar.multiselect(
-    "Select Sentiment",
-    options=df['sentiment_label'].unique(),
-    default=df['sentiment_label'].unique()
-)
-domain_filter = st.sidebar.multiselect(
-    "Select Domain",
-    options=df['domain'].unique(),
-    default=df['domain'].unique()
+from flask import (
+    Flask,
+    Response,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
 )
 
-# Keyword search
-st.sidebar.header("Keyword Search")
-keyword = st.sidebar.text_input("Enter keyword to search comments")
+from dotenv import load_dotenv
 
-# Apply filters
-filtered_df = df[
-    (df['sentiment_label'].isin(sentiment_filter)) &
-    (df['domain'].isin(domain_filter))
-]
-if keyword:
-    filtered_df = filtered_df[filtered_df['comment'].str.contains(keyword, case=False, na=False)]
+from preprocess import (
+    preprocess_comment,
+    get_vader_sentiment,
+)
 
-# Summary section
-st.header("Summary")
-if filtered_df.empty:
-    st.warning("No data matches the selected filters or keyword. Please adjust the filters.")
-else:
-    total_comments = len(filtered_df)
-    positive_comments = len(filtered_df[filtered_df['sentiment_label'] == 'positive'])
-    negative_comments = len(filtered_df[filtered_df['sentiment_label'] == 'negative'])
-    neutral_comments = len(filtered_df[filtered_df['sentiment_label'] == 'neutral'])
-    pos_percentage = (positive_comments / total_comments * 100) if total_comments > 0 else 0
-    neg_percentage = (negative_comments / total_comments * 100) if total_comments > 0 else 0
-    neu_percentage = (neutral_comments / total_comments * 100) if total_comments > 0 else 0
-    st.write(f"""
-    - **Data Source**: {data_source}
-    - **Total Comments**: {total_comments}
-    - **Positive Comments**: {positive_comments} ({pos_percentage:.1f}%)
-    - **Negative Comments**: {negative_comments} ({neg_percentage:.1f}%)
-    - **Neutral Comments**: {neutral_comments} ({neu_percentage:.1f}%)
-    """)
+import db
 
-# Visualization: Sentiment Distribution
-st.header("Sentiment Distribution")
-if not filtered_df.empty:
-    sentiment_counts = filtered_df['sentiment_label'].value_counts().reset_index()
-    sentiment_counts.columns = ['Sentiment', 'Count']
-    fig1 = px.pie(
-        sentiment_counts,
-        names='Sentiment',
-        values='Count',
-        title="Sentiment Distribution",
-        color='Sentiment',
-        color_discrete_map={'positive': '#00CC96', 'negative': '#EF553B', 'neutral': '#636EFA'}
-    )
-    fig1.update_traces(textinfo='percent+label')
-    fig1.update_layout(showlegend=True)
-    st.plotly_chart(fig1, use_container_width=True)
-else:
-    st.warning("No data to display for sentiment distribution.")
 
-# Visualization: Domain-wise Sentiment
-st.header("Domain-wise Sentiment Analysis")
-if not filtered_df.empty:
-    try:
-        domain_sentiment = filtered_df.groupby(['domain', 'sentiment_label']).size().unstack(fill_value=0).reset_index()
-        available_sentiments = [col for col in domain_sentiment.columns if col in ['positive', 'negative', 'neutral']]
-        if not available_sentiments:
-            st.warning("No sentiment data available for domain-wise analysis.")
-        else:
-            domain_sentiment = domain_sentiment.melt(id_vars='domain', value_vars=available_sentiments, var_name='Sentiment', value_name='Count')
-            fig2 = px.bar(
-                domain_sentiment,
-                x='domain',
-                y='Count',
-                color='Sentiment',
-                barmode='stack',
-                title="Sentiment by Domain",
-                color_discrete_map={'positive': '#00CC96', 'negative': '#EF553B', 'neutral': '#636EFA'}
-            )
-            fig2.update_layout(
-                xaxis_title="Domain",
-                yaxis_title="Number of Comments",
-                xaxis_tickangle=45
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error creating domain-wise sentiment chart: {str(e)}")
-else:
-    st.warning("No data to display for domain-wise sentiment analysis.")
+# ============================================================
+# ENVIRONMENT
+# ============================================================
 
-# Visualization: Word Cloud
-st.header("Comment Word Cloud")
-if not filtered_df.empty:
-    try:
-        # Generate separate word clouds for each sentiment
-        for sentiment in ['positive', 'negative', 'neutral']:
-            sentiment_text = filtered_df[filtered_df['sentiment_label'] == sentiment]['comment'].str.lower()
-            if not sentiment_text.empty:
-                text = " ".join(sentiment_text)
-                wordcloud = WordCloud(width=800, height=400, background_color="white",
-                                    colormap={'positive': 'Greens', 'negative': 'Reds', 'neutral': 'Blues'}[sentiment]).generate(text)
-                st.subheader(f"{sentiment.capitalize()} Comments")
-                fig, ax = plt.subplots()
-                ax.imshow(wordcloud, interpolation="bilinear")
-                ax.axis("off")
-                st.pyplot(fig)
-    except Exception as e:
-        st.error(f"Error creating word cloud: {str(e)}")
-else:
-    st.warning("No comments to display for word cloud.")
+load_dotenv()
 
-# Keyword Search Results
-if keyword:
-    st.header("Keyword Search Results")
-    if not filtered_df.empty:
-        display_columns = ['comment', 'domain', 'sentiment_label', 'vader_score']
-        if 'comment_id' in filtered_df.columns:
-            display_columns.insert(0, 'comment_id')
-        # Highlight keyword in comments
-        filtered_df['comment'] = filtered_df['comment'].apply(
-            lambda x: x.replace(keyword, f"**{keyword}**") if isinstance(x, str) and keyword.lower() in x.lower() else x
+app = Flask(__name__)
+
+app.secret_key = os.getenv(
+    "SECRET_KEY",
+    "econsult_sentiment_secret_key_2026"
+)
+
+
+# ============================================================
+# PROJECT PATHS
+# ============================================================
+
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
+
+MODELS_DIR = os.path.join(
+    BASE_DIR,
+    "models"
+)
+
+MODEL_PATH = os.path.join(
+    MODELS_DIR,
+    "sentiment_model.joblib"
+)
+
+VECTORIZER_PATH = os.path.join(
+    MODELS_DIR,
+    "tfidf_vectorizer.joblib"
+)
+
+METRICS_PATH = os.path.join(
+    MODELS_DIR,
+    "model_metrics.json"
+)
+
+
+# ============================================================
+# LOAD ML MODEL
+# ============================================================
+
+model = None
+vectorizer = None
+
+try:
+
+    # --------------------------------------------------------
+    # Check whether trained model exists
+    # --------------------------------------------------------
+
+    if (
+        not os.path.exists(MODEL_PATH)
+        or not os.path.exists(VECTORIZER_PATH)
+    ):
+
+        print(
+            "[!] Trained model/vectorizer not found."
         )
-        st.dataframe(filtered_df[display_columns], use_container_width=True)
+
+        try:
+
+            from train_model import train_and_evaluate
+
+            print(
+                "[*] Starting model training..."
+            )
+
+            train_and_evaluate()
+
+        except Exception as training_error:
+
+            print(
+                "[!] Automatic model training failed: "
+                f"{training_error}"
+            )
+
+    # --------------------------------------------------------
+    # Load trained model
+    # --------------------------------------------------------
+
+    if os.path.exists(MODEL_PATH):
+
+        model = joblib.load(
+            MODEL_PATH
+        )
+
+    # --------------------------------------------------------
+    # Load TF-IDF vectorizer
+    # --------------------------------------------------------
+
+    if os.path.exists(VECTORIZER_PATH):
+
+        vectorizer = joblib.load(
+            VECTORIZER_PATH
+        )
+
+    # --------------------------------------------------------
+    # Status
+    # --------------------------------------------------------
+
+    if (
+        model is not None
+        and vectorizer is not None
+    ):
+
+        print(
+            "[+] ML model and TF-IDF vectorizer loaded."
+        )
+
     else:
-        st.warning(f"No comments found containing '{keyword}'.")
 
-# Sentiment Intensity Breakdown
-st.header("Sentiment Intensity Breakdown")
-if not filtered_df.empty and 'vader_score' in filtered_df.columns:
-    avg_scores = filtered_df.groupby('sentiment_label')['vader_score'].mean().reset_index()
-    st.write("Average VADER Compound Scores by Sentiment:")
-    st.dataframe(avg_scores, use_container_width=True)
-    # Show sample comments with scores
-    display_columns = ['comment', 'domain', 'sentiment_label', 'vader_score']
-    if 'comment_id' in filtered_df.columns:
-        display_columns.insert(0, 'comment_id')
-    st.write("Sample Comments with VADER Scores:")
-    st.dataframe(filtered_df[display_columns].head(10), use_container_width=True)
-else:
-    st.warning("No sentiment intensity data available.")
+        print(
+            "[!] ML model/vectorizer unavailable."
+        )
 
-# Actionable Recommendations
-st.header("Actionable Recommendations")
-if not filtered_df.empty:
-    recommendations = []
-    for domain in filtered_df['domain'].unique():
-        domain_df = filtered_df[filtered_df['domain'] == domain]
-        neg_count = len(domain_df[domain_df['sentiment_label'] == 'negative'])
-        pos_count = len(domain_df[domain_df['sentiment_label'] == 'positive'])
-        if neg_count > pos_count:
-            recommendations.append(f"**{domain.capitalize()}**: Address negative feedback (e.g., improve reliability or clarity) to enhance user satisfaction.")
-        elif pos_count > neg_count:
-            recommendations.append(f"**{domain.capitalize()}**: Leverage strong positive feedback (e.g., expand successful features) to attract more users.")
-        else:
-            recommendations.append(f"**{domain.capitalize()}**: Balance neutral or mixed feedback by enhancing standout features and addressing minor issues.")
-    for rec in recommendations:
-        st.markdown(rec)
-else:
-    st.warning("No data available for recommendations.")
+except Exception as error:
 
-# Table: Sample Comments
-st.header("Sample Comments")
-if not filtered_df.empty:
-    display_columns = ['comment', 'domain', 'sentiment_label', 'vader_score']
-    if 'comment_id' in filtered_df.columns:
-        display_columns.insert(0, 'comment_id')
-    st.dataframe(
-        filtered_df[display_columns].head(10),
-        use_container_width=True
+    model = None
+    vectorizer = None
+
+    print(
+        "[!] Error loading ML model/vectorizer: "
+        f"{error}"
     )
-else:
-    st.warning("No comments to display for the selected filters.")
 
-# Downloadable Insights Report
-st.header("Download Insights Report")
-if not filtered_df.empty:
-    # Create summary for download
-    summary_data = {
-        'Metric': ['Total Comments', 'Positive Comments', 'Negative Comments', 'Neutral Comments'],
-        'Value': [total_comments, f"{positive_comments} ({pos_percentage:.1f}%)",
-                  f"{negative_comments} ({neg_percentage:.1f}%)", f"{neutral_comments} ({neu_percentage:.1f}%)"]
+
+# ============================================================
+# LOAD MODEL METRICS
+# ============================================================
+
+metrics_data = {}
+
+if os.path.exists(METRICS_PATH):
+
+    try:
+
+        with open(
+            METRICS_PATH,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            metrics_data = json.load(file)
+
+        print(
+            "[+] Model metrics loaded."
+        )
+
+    except Exception as error:
+
+        print(
+            "[!] Error loading model metrics: "
+            f"{error}"
+        )
+
+
+# ============================================================
+# DATABASE STATUS
+# ============================================================
+
+def get_db_status():
+    """
+    Check MySQL connection status.
+    """
+
+    try:
+
+        connected, message = (
+            db.check_connection()
+        )
+
+        return {
+            "connected": connected,
+            "message": message
+        }
+
+    except Exception as error:
+
+        return {
+            "connected": False,
+            "message": str(error)
+        }
+
+
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
+
+db_status = get_db_status()
+
+if db_status["connected"]:
+
+    try:
+
+        db.init_db()
+
+        print(
+            "[+] MySQL database and comments table ready."
+        )
+
+    except Exception as error:
+
+        print(
+            "[!] MySQL initialization error: "
+            f"{error}"
+        )
+
+else:
+
+    print(
+        "[!] MySQL not connected: "
+        f"{db_status['message']}"
+    )
+
+
+# ============================================================
+# SENTIMENT PREDICTION
+# ============================================================
+
+def predict_sentiment_single(comment_text: str):
+    """
+    Perform sentiment prediction.
+
+    Pipeline:
+
+    Comment
+        ↓
+    NLTK preprocessing
+        ↓
+    TF-IDF
+        ↓
+    Scikit-Learn Model
+        ↓
+    Sentiment + Confidence
+
+    VADER is also calculated as a baseline.
+    """
+
+    # --------------------------------------------------------
+    # PREPROCESS COMMENT
+    # --------------------------------------------------------
+
+    cleaned = preprocess_comment(
+        comment_text
+    )
+
+    sentiment = None
+    confidence = 0.0
+
+    # --------------------------------------------------------
+    # PRIMARY ML MODEL
+    # --------------------------------------------------------
+
+    if (
+        model is not None
+        and vectorizer is not None
+    ):
+
+        try:
+
+            X_vec = vectorizer.transform(
+                [cleaned]
+            )
+
+            # ------------------------------------------------
+            # Models with predict_proba()
+            # ------------------------------------------------
+
+            if hasattr(
+                model,
+                "predict_proba"
+            ):
+
+                probabilities = (
+                    model.predict_proba(X_vec)[0]
+                )
+
+                classes = list(
+                    model.classes_
+                )
+
+                # --------------------------------------------
+                # Find positive class
+                # --------------------------------------------
+
+                if "positive" in classes:
+
+                    positive_index = (
+                        classes.index("positive")
+                    )
+
+                else:
+
+                    positive_index = None
+
+                # --------------------------------------------
+                # Find negative class
+                # --------------------------------------------
+
+                if "negative" in classes:
+
+                    negative_index = (
+                        classes.index("negative")
+                    )
+
+                else:
+
+                    negative_index = None
+
+                # --------------------------------------------
+                # Positive probability
+                # --------------------------------------------
+
+                positive_probability = (
+
+                    float(
+                        probabilities[
+                            positive_index
+                        ]
+                    )
+
+                    if positive_index is not None
+
+                    else 0.0
+                )
+
+                # --------------------------------------------
+                # Negative probability
+                # --------------------------------------------
+
+                negative_probability = (
+
+                    float(
+                        probabilities[
+                            negative_index
+                        ]
+                    )
+
+                    if negative_index is not None
+
+                    else 0.0
+                )
+
+                # --------------------------------------------
+                # Sentiment decision
+                # --------------------------------------------
+
+                if (
+                    0.45
+                    <= positive_probability
+                    <= 0.55
+                ):
+
+                    sentiment = "neutral"
+
+                    confidence = round(
+                        max(
+                            positive_probability,
+                            negative_probability
+                        ),
+                        4
+                    )
+
+                elif positive_probability > 0.55:
+
+                    sentiment = "positive"
+
+                    confidence = round(
+                        positive_probability,
+                        4
+                    )
+
+                else:
+
+                    sentiment = "negative"
+
+                    confidence = round(
+                        negative_probability,
+                        4
+                    )
+
+            # ------------------------------------------------
+            # Models without predict_proba()
+            # ------------------------------------------------
+
+            else:
+
+                prediction = model.predict(
+                    X_vec
+                )[0]
+
+                sentiment = str(
+                    prediction
+                ).lower()
+
+                # A classifier such as LinearSVC does not
+                # directly provide probabilities.
+                #
+                # We keep the existing behavior of the
+                # application and use a display confidence.
+
+                confidence = 0.85
+
+        except Exception as error:
+
+            print(
+                "[!] ML prediction error: "
+                f"{error}"
+            )
+
+            sentiment = None
+            confidence = 0.0
+
+    # --------------------------------------------------------
+    # VADER FALLBACK
+    # --------------------------------------------------------
+
+    if sentiment is None:
+
+        vader_result = get_vader_sentiment(
+            comment_text
+        )
+
+        sentiment = vader_result[
+            "sentiment"
+        ]
+
+        confidence = abs(
+            float(
+                vader_result["compound"]
+            )
+        )
+
+    # --------------------------------------------------------
+    # VADER BASELINE
+    # --------------------------------------------------------
+
+    vader = get_vader_sentiment(
+        comment_text
+    )
+
+    return {
+        "sentiment": sentiment,
+
+        "confidence": round(
+            float(confidence),
+            4
+        ),
+
+        "preprocessed_comment": cleaned,
+
+        "vader": vader
     }
-    summary_df = pd.DataFrame(summary_data)
-    csv = pd.concat([summary_df, filtered_df[display_columns]]).to_csv(index=False)
-    st.download_button(
-        label="Download Insights Report as CSV",
-        data=csv,
-        file_name="feedback_insights.csv",
-        mime="text/csv"
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+@app.route("/")
+def index():
+
+    status = get_db_status()
+
+    stats = {
+        "total": 0,
+        "positive": 0,
+        "negative": 0,
+        "neutral": 0,
+        "positive_pct": 0,
+        "negative_pct": 0,
+        "neutral_pct": 0,
+        "domain_distribution": [],
+        "recent_comments": []
+    }
+
+    if status["connected"]:
+
+        try:
+
+            stats = db.get_dashboard_stats()
+
+        except Exception as error:
+
+            flash(
+                "Error fetching dashboard statistics: "
+                f"{error}",
+                "danger"
+            )
+
+    return render_template(
+        "index.html",
+        active_page="dashboard",
+        db_status=status,
+        stats=stats,
+        metrics=metrics_data
     )
-else:
-    st.warning("No data available to download.")
 
-# Interesting Fact
-st.header("Interesting Fact")
-if data_source == "Upload Your Dataset" and uploaded_df is not None:
-    st.markdown("""
-    Your uploaded dataset has been analyzed with VADER sentiment analysis, capturing positive, negative, and neutral feedback. Positive comments often highlight personalized and empathetic responses, neutral ones note functional but unremarkable experiences, and negative ones point to technical or usability issues. Explore the visualizations to uncover trends specific to your data!
-    """)
-else:
-    st.markdown("""
-    The default dataset reveals a striking contrast: the **accessibility** domain receives unanimous positive feedback (e.g., “empowering for rural patients” and “inclusive braille PDF exports”), while **technical** issues dominate negative comments (e.g., “app crashes frequently”). Neutral feedback often highlights functional but unremarkable features, suggesting opportunities to enhance user engagement.
-    """)
 
-# Conclusion
-st.header("Conclusion")
-if data_source == "Upload Your Dataset" and uploaded_df is not None:
-    st.markdown("""
-    Your dataset analysis reveals strengths, challenges, and neutral perspectives in your feedback. Use these insights to optimize services, enhance user experiences, or share with stakeholders across any industry.
-    """)
-else:
-    st.markdown("""
-    The default dataset showcases a platform excelling in accessibility and specialized care (e.g., **mental_health** and **accessibility** domains), with neutral feedback indicating functional but uninspiring features. Technical and privacy challenges (e.g., “app crashes” and “unclear privacy policies”) hinder its impact. Addressing these while amplifying strengths will boost user trust and adoption across diverse fields.
-    """)
+# ============================================================
+# SINGLE COMMENT PREDICTION
+# ============================================================
+
+@app.route(
+    "/predict",
+    methods=["POST"]
+)
+def predict():
+
+    # --------------------------------------------------------
+    # JSON request
+    # --------------------------------------------------------
+
+    if request.is_json:
+
+        data = request.get_json() or {}
+
+        comment = str(
+            data.get(
+                "comment",
+                ""
+            )
+        ).strip()
+
+        domain = str(
+            data.get(
+                "domain",
+                "general"
+            )
+        ).strip().lower()
+
+    # --------------------------------------------------------
+    # Normal form request
+    # --------------------------------------------------------
+
+    else:
+
+        comment = request.form.get(
+            "comment",
+            ""
+        ).strip()
+
+        domain = request.form.get(
+            "domain",
+            "general"
+        ).strip().lower()
+
+    # --------------------------------------------------------
+    # Validate comment
+    # --------------------------------------------------------
+
+    if not comment:
+
+        return jsonify(
+            {
+                "success": False,
+                "error": "Comment cannot be empty."
+            }
+        ), 400
+
+    # --------------------------------------------------------
+    # Prediction
+    # --------------------------------------------------------
+
+    prediction = predict_sentiment_single(
+        comment
+    )
+
+    # --------------------------------------------------------
+    # SAVE TO MYSQL
+    # --------------------------------------------------------
+
+    db_saved = False
+    db_warning = None
+    inserted_id = None
+
+    status = get_db_status()
+
+    if status["connected"]:
+
+        try:
+
+            inserted_id = db.insert_comment(
+
+                comment_text=comment,
+
+                domain=domain,
+
+                sentiment=prediction[
+                    "sentiment"
+                ],
+
+                confidence=prediction[
+                    "confidence"
+                ],
+
+                vader_sentiment=prediction[
+                    "vader"
+                ]["sentiment"],
+
+                vader_compound=prediction[
+                    "vader"
+                ]["compound"],
+
+                source="manual"
+            )
+
+            db_saved = True
+
+        except Exception as error:
+
+            db_warning = (
+                "Failed to save prediction "
+                f"to MySQL: {error}"
+            )
+
+    else:
+
+        db_warning = (
+            "MySQL is not connected. "
+            "Prediction was not stored."
+        )
+
+    # --------------------------------------------------------
+    # Response payload
+    # --------------------------------------------------------
+
+    response_payload = {
+
+        "success": True,
+
+        "id": inserted_id,
+
+        "comment": comment,
+
+        "domain": domain,
+
+        "sentiment": prediction[
+            "sentiment"
+        ],
+
+        "confidence": prediction[
+            "confidence"
+        ],
+
+        "preprocessed_comment": prediction[
+            "preprocessed_comment"
+        ],
+
+        "vader": prediction[
+            "vader"
+        ],
+
+        "db_saved": db_saved,
+
+        "db_warning": db_warning
+    }
+
+    # --------------------------------------------------------
+    # JSON response
+    # --------------------------------------------------------
+
+    if request.is_json:
+
+        return jsonify(
+            response_payload
+        )
+
+    # --------------------------------------------------------
+    # Browser form response
+    # --------------------------------------------------------
+
+    flash(
+        (
+            "Sentiment: "
+            f"{prediction['sentiment'].upper()} "
+            "("
+            f"{int(prediction['confidence'] * 100)}%"
+            " confidence)"
+        ),
+        "success"
+    )
+
+    return redirect(
+        url_for("index")
+    )
+
+
+# ============================================================
+# BULK CSV PAGE
+# ============================================================
+
+@app.route("/bulk")
+def bulk_page():
+
+    status = get_db_status()
+
+    return render_template(
+        "bulk.html",
+        active_page="bulk",
+        db_status=status
+    )
+
+
+# ============================================================
+# BULK CSV PREDICTION
+# ============================================================
+
+@app.route(
+    "/predict-bulk",
+    methods=["POST"]
+)
+def predict_bulk():
+
+    # --------------------------------------------------------
+    # Check file
+    # --------------------------------------------------------
+
+    if "file" not in request.files:
+
+        flash(
+            "No file part in the upload request.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("bulk_page")
+        )
+
+    file = request.files["file"]
+
+    # --------------------------------------------------------
+    # Empty filename
+    # --------------------------------------------------------
+
+    if file.filename == "":
+
+        flash(
+            "Please select a valid CSV file.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("bulk_page")
+        )
+
+    # --------------------------------------------------------
+    # File extension
+    # --------------------------------------------------------
+
+    if not file.filename.lower().endswith(
+        ".csv"
+    ):
+
+        flash(
+            "Only CSV files are supported.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("bulk_page")
+        )
+
+    try:
+
+        # ----------------------------------------------------
+        # Read CSV
+        # ----------------------------------------------------
+
+        df = pd.read_csv(file)
+
+        # ----------------------------------------------------
+        # Required column
+        # ----------------------------------------------------
+
+        if "comment" not in df.columns:
+
+            flash(
+                (
+                    "Uploaded CSV must contain "
+                    "a column named 'comment'."
+                ),
+                "danger"
+            )
+
+            return redirect(
+                url_for("bulk_page")
+            )
+
+        # ----------------------------------------------------
+        # Remove empty comments
+        # ----------------------------------------------------
+
+        df = df.dropna(
+            subset=["comment"]
+        )
+
+        # ----------------------------------------------------
+        # Add default domain
+        # ----------------------------------------------------
+
+        if "domain" not in df.columns:
+
+            df["domain"] = "general"
+
+        db_records = []
+        batch_rows = []
+
+        sentiment_counts = {
+            "positive": 0,
+            "negative": 0,
+            "neutral": 0
+        }
+
+        # ----------------------------------------------------
+        # Process every comment
+        # ----------------------------------------------------
+
+        for _, row in df.iterrows():
+
+            comment_text = str(
+                row["comment"]
+            ).strip()
+
+            domain = str(
+                row["domain"]
+            ).strip().lower()
+
+            if not comment_text:
+
+                continue
+
+            prediction = (
+                predict_sentiment_single(
+                    comment_text
+                )
+            )
+
+            sentiment = prediction[
+                "sentiment"
+            ]
+
+            sentiment_counts[
+                sentiment
+            ] = sentiment_counts.get(
+                sentiment,
+                0
+            ) + 1
+
+            # ------------------------------------------------
+            # Result for dashboard
+            # ------------------------------------------------
+
+            record = {
+
+                "comment_text":
+                    comment_text,
+
+                "domain":
+                    domain,
+
+                "sentiment":
+                    sentiment,
+
+                "confidence":
+                    prediction[
+                        "confidence"
+                    ],
+
+                "vader_sentiment":
+                    prediction[
+                        "vader"
+                    ]["sentiment"],
+
+                "vader_compound":
+                    prediction[
+                        "vader"
+                    ]["compound"],
+
+                "source":
+                    "bulk_upload"
+            }
+
+            batch_rows.append(
+                record
+            )
+
+            # ------------------------------------------------
+            # MySQL record
+            # ------------------------------------------------
+
+            db_records.append(
+                (
+                    comment_text,
+                    domain,
+                    sentiment,
+                    prediction[
+                        "confidence"
+                    ],
+                    prediction[
+                        "vader"
+                    ]["sentiment"],
+                    prediction[
+                        "vader"
+                    ]["compound"],
+                    "bulk_upload"
+                )
+            )
+
+        # ----------------------------------------------------
+        # SAVE BULK DATA
+        # ----------------------------------------------------
+
+        status = get_db_status()
+
+        if (
+            status["connected"]
+            and db_records
+        ):
+
+            try:
+
+                db.insert_bulk_comments(
+                    db_records
+                )
+
+                flash(
+                    (
+                        "Successfully processed "
+                        "and stored "
+                        f"{len(db_records)} "
+                        "comments in MySQL."
+                    ),
+                    "success"
+                )
+
+            except Exception as error:
+
+                flash(
+                    (
+                        "Comments were processed, "
+                        "but MySQL saving failed: "
+                        f"{error}"
+                    ),
+                    "warning"
+                )
+
+        else:
+
+            flash(
+                (
+                    "Processed comments, but MySQL "
+                    "was unreachable. Records were "
+                    "not stored in the database."
+                ),
+                "warning"
+            )
+
+        # ----------------------------------------------------
+        # Summary
+        # ----------------------------------------------------
+
+        total = len(
+            batch_rows
+        )
+
+        bulk_summary = {
+
+            "total":
+                total,
+
+            "positive":
+                sentiment_counts[
+                    "positive"
+                ],
+
+            "negative":
+                sentiment_counts[
+                    "negative"
+                ],
+
+            "neutral":
+                sentiment_counts[
+                    "neutral"
+                ],
+
+            "positive_pct":
+                round(
+                    (
+                        sentiment_counts[
+                            "positive"
+                        ]
+                        / total
+                        * 100
+                    ),
+                    1
+                )
+                if total > 0
+                else 0,
+
+            "negative_pct":
+                round(
+                    (
+                        sentiment_counts[
+                            "negative"
+                        ]
+                        / total
+                        * 100
+                    ),
+                    1
+                )
+                if total > 0
+                else 0,
+
+            "neutral_pct":
+                round(
+                    (
+                        sentiment_counts[
+                            "neutral"
+                        ]
+                        / total
+                        * 100
+                    ),
+                    1
+                )
+                if total > 0
+                else 0,
+
+            "rows":
+                batch_rows
+        }
+
+        return render_template(
+            "bulk.html",
+            active_page="bulk",
+            db_status=status,
+            bulk_summary=bulk_summary
+        )
+
+    except Exception as error:
+
+        flash(
+            "Error processing CSV file: "
+            f"{error}",
+            "danger"
+        )
+
+        return redirect(
+            url_for("bulk_page")
+        )
+
+
+# ============================================================
+# LOAD SAMPLE DATASET
+# ============================================================
+
+@app.route("/load-sample")
+def load_sample_csv():
+
+    sample_path = os.path.join(
+        BASE_DIR,
+        "test_comments.csv"
+    )
+
+    # --------------------------------------------------------
+    # Check sample dataset
+    # --------------------------------------------------------
+
+    if not os.path.exists(
+        sample_path
+    ):
+
+        flash(
+            "test_comments.csv not found.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("bulk_page")
+        )
+
+    try:
+
+        df = pd.read_csv(
+            sample_path
+        )
+
+        # ----------------------------------------------------
+        # Required column
+        # ----------------------------------------------------
+
+        if "comment" not in df.columns:
+
+            flash(
+                (
+                    "test_comments.csv must "
+                    "contain a 'comment' column."
+                ),
+                "danger"
+            )
+
+            return redirect(
+                url_for("bulk_page")
+            )
+
+        db_records = []
+        batch_rows = []
+
+        sentiment_counts = {
+            "positive": 0,
+            "negative": 0,
+            "neutral": 0
+        }
+
+        # ----------------------------------------------------
+        # Process sample dataset
+        # ----------------------------------------------------
+
+        for _, row in df.iterrows():
+
+            comment_text = str(
+                row["comment"]
+            ).strip()
+
+            domain = str(
+                row.get(
+                    "domain",
+                    "general"
+                )
+            ).strip().lower()
+
+            if not comment_text:
+
+                continue
+
+            prediction = (
+                predict_sentiment_single(
+                    comment_text
+                )
+            )
+
+            sentiment = prediction[
+                "sentiment"
+            ]
+
+            sentiment_counts[
+                sentiment
+            ] = sentiment_counts.get(
+                sentiment,
+                0
+            ) + 1
+
+            # ------------------------------------------------
+            # Result record
+            # ------------------------------------------------
+
+            record = {
+
+                "comment_text":
+                    comment_text,
+
+                "domain":
+                    domain,
+
+                "sentiment":
+                    sentiment,
+
+                "confidence":
+                    prediction[
+                        "confidence"
+                    ],
+
+                "vader_sentiment":
+                    prediction[
+                        "vader"
+                    ]["sentiment"],
+
+                "vader_compound":
+                    prediction[
+                        "vader"
+                    ]["compound"],
+
+                "source":
+                    "sample_test"
+            }
+
+            batch_rows.append(
+                record
+            )
+
+            # ------------------------------------------------
+            # Database record
+            # ------------------------------------------------
+
+            db_records.append(
+                (
+                    comment_text,
+                    domain,
+                    sentiment,
+                    prediction[
+                        "confidence"
+                    ],
+                    prediction[
+                        "vader"
+                    ]["sentiment"],
+                    prediction[
+                        "vader"
+                    ]["compound"],
+                    "sample_test"
+                )
+            )
+
+        # ----------------------------------------------------
+        # Save to MySQL
+        # ----------------------------------------------------
+
+        status = get_db_status()
+
+        if status["connected"]:
+
+            try:
+
+                if db_records:
+
+                    db.insert_bulk_comments(
+                        db_records
+                    )
+
+                flash(
+                    (
+                        "Sample dataset analyzed "
+                        f"and {len(db_records)} "
+                        "comments logged to MySQL."
+                    ),
+                    "success"
+                )
+
+            except Exception as error:
+
+                flash(
+                    (
+                        "Sample comments analyzed, "
+                        "but MySQL saving failed: "
+                        f"{error}"
+                    ),
+                    "warning"
+                )
+
+        else:
+
+            flash(
+                (
+                    "Sample dataset analyzed, "
+                    "but MySQL is disconnected. "
+                    "Records were not stored."
+                ),
+                "warning"
+            )
+
+        # ----------------------------------------------------
+        # Summary
+        # ----------------------------------------------------
+
+        total = len(
+            batch_rows
+        )
+
+        bulk_summary = {
+
+            "total":
+                total,
+
+            "positive":
+                sentiment_counts[
+                    "positive"
+                ],
+
+            "negative":
+                sentiment_counts[
+                    "negative"
+                ],
+
+            "neutral":
+                sentiment_counts[
+                    "neutral"
+                ],
+
+            "positive_pct":
+                round(
+                    (
+                        sentiment_counts[
+                            "positive"
+                        ]
+                        / total
+                        * 100
+                    ),
+                    1
+                )
+                if total > 0
+                else 0,
+
+            "negative_pct":
+                round(
+                    (
+                        sentiment_counts[
+                            "negative"
+                        ]
+                        / total
+                        * 100
+                    ),
+                    1
+                )
+                if total > 0
+                else 0,
+
+            "neutral_pct":
+                round(
+                    (
+                        sentiment_counts[
+                            "neutral"
+                        ]
+                        / total
+                        * 100
+                    ),
+                    1
+                )
+                if total > 0
+                else 0,
+
+            "rows":
+                batch_rows
+        }
+
+        return render_template(
+            "bulk.html",
+            active_page="bulk",
+            db_status=status,
+            bulk_summary=bulk_summary
+        )
+
+    except Exception as error:
+
+        flash(
+            "Error loading sample dataset: "
+            f"{error}",
+            "danger"
+        )
+
+        return redirect(
+            url_for("bulk_page")
+        )
+
+
+# ============================================================
+# HISTORY
+# ============================================================
+
+@app.route("/history")
+def history_page():
+
+    status = get_db_status()
+
+    # --------------------------------------------------------
+    # MySQL unavailable
+    # --------------------------------------------------------
+
+    if not status["connected"]:
+
+        return render_template(
+            "db_error.html",
+            active_page="history",
+            error_message=status[
+                "message"
+            ]
+        )
+
+    # --------------------------------------------------------
+    # Search/filter
+    # --------------------------------------------------------
+
+    search = request.args.get(
+        "search",
+        ""
+    ).strip()
+
+    sentiment = request.args.get(
+        "sentiment",
+        "all"
+    ).strip().lower()
+
+    try:
+
+        comments = db.get_all_comments(
+
+            limit=200,
+
+            search_keyword=(
+                search
+                if search
+                else None
+            ),
+
+            sentiment_filter=(
+                sentiment
+                if sentiment != "all"
+                else None
+            )
+        )
+
+        return render_template(
+            "history.html",
+
+            active_page="history",
+
+            db_status=status,
+
+            comments=comments,
+
+            search_keyword=search,
+
+            current_sentiment=sentiment
+        )
+
+    except Exception as error:
+
+        return render_template(
+            "db_error.html",
+            active_page="history",
+            error_message=str(error)
+        )
+
+
+# ============================================================
+# DELETE HISTORY RECORD
+# ============================================================
+
+@app.route(
+    "/history/delete/<int:record_id>",
+    methods=["POST"]
+)
+def delete_record(record_id):
+
+    status = get_db_status()
+
+    # --------------------------------------------------------
+    # MySQL unavailable
+    # --------------------------------------------------------
+
+    if not status["connected"]:
+
+        flash(
+            "Cannot delete record: "
+            "MySQL is disconnected.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("history_page")
+        )
+
+    try:
+
+        success = db.delete_comment_by_id(
+            record_id
+        )
+
+        if success:
+
+            flash(
+                (
+                    f"Comment #{record_id} "
+                    "deleted successfully."
+                ),
+                "success"
+            )
+
+        else:
+
+            flash(
+                (
+                    f"Comment #{record_id} "
+                    "was not found."
+                ),
+                "warning"
+            )
+
+    except Exception as error:
+
+        flash(
+            "Error deleting comment: "
+            f"{error}",
+            "danger"
+        )
+
+    return redirect(
+        url_for("history_page")
+    )
+
+
+# ============================================================
+# API STATISTICS
+# ============================================================
+
+@app.route("/api/stats")
+def api_stats():
+
+    status = get_db_status()
+
+    # --------------------------------------------------------
+    # Database unavailable
+    # --------------------------------------------------------
+
+    if not status["connected"]:
+
+        return jsonify(
+            {
+                "connected": False,
+                "total": 0,
+                "positive": 0,
+                "negative": 0,
+                "neutral": 0,
+                "domain_distribution": []
+            }
+        )
+
+    try:
+
+        stats = (
+            db.get_dashboard_stats()
+        )
+
+        stats["connected"] = True
+
+        return jsonify(
+            stats
+        )
+
+    except Exception as error:
+
+        return jsonify(
+            {
+                "connected": False,
+                "error": str(error)
+            }
+        ), 500
+
+
+# ============================================================
+# EXPORT CSV
+# ============================================================
+
+@app.route("/export")
+def export_csv():
+
+    status = get_db_status()
+
+    # --------------------------------------------------------
+    # Database unavailable
+    # --------------------------------------------------------
+
+    if not status["connected"]:
+
+        flash(
+            "Cannot export: "
+            "MySQL is not connected.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("history_page")
+        )
+
+    try:
+
+        comments = db.get_all_comments(
+            limit=5000
+        )
+
+        df = pd.DataFrame(
+            comments
+        )
+
+        output = io.StringIO()
+
+        df.to_csv(
+            output,
+            index=False
+        )
+
+        output.seek(0)
+
+        return Response(
+
+            output.getvalue(),
+
+            mimetype="text/csv",
+
+            headers={
+                "Content-Disposition":
+                    (
+                        "attachment;"
+                        "filename="
+                        "econsult_sentiment_records.csv"
+                    )
+            }
+        )
+
+    except Exception as error:
+
+        flash(
+            "Export error: "
+            f"{error}",
+            "danger"
+        )
+
+        return redirect(
+            url_for("history_page")
+        )
+
+
+# ============================================================
+# ERROR HANDLERS
+# ============================================================
+
+@app.errorhandler(404)
+def page_not_found(error):
+
+    return render_template(
+        "base.html",
+        active_page=""
+    ), 404
+
+
+@app.errorhandler(500)
+def server_error(error):
+
+    return render_template(
+        "base.html",
+        active_page=""
+    ), 500
+
+
+# ============================================================
+# RUN APPLICATION
+# ============================================================
+
+if __name__ == "__main__":
+
+    port = int(
+        os.getenv(
+            "PORT",
+            5000
+        )
+    )
+
+    print(
+        "[*] Starting E-Consult Sentiment AI "
+        f"on http://127.0.0.1:{port}"
+    )
+
+    app.run(
+        host="127.0.0.1",
+        port=port,
+        debug=True
+    )

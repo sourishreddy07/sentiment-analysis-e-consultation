@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}History & Records | E-Consultation Sentiment Analysis{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <div class="header-split">
+        <div>
+            <h1>Prediction Records & History</h1>
+            <p class="subtitle">Search, filter, and inspect all e-consultation comments stored in the MySQL database.</p>
+        </div>
+        <div class="header-actions">
+            <a href="{{ url_for('export_csv') }}" class="btn btn-outline">📥 Export to CSV</a>
+        </div>
+    </div>
+</section>
+
+<!-- Filter Toolbar -->
+<div class="filter-toolbar">
+    <form method="GET" action="{{ url_for('history_page') }}" class="filter-form">
+        <div class="filter-group search-box">
+            <input type="text" name="search" placeholder="Search comments by keyword..." value="{{ search_keyword or '' }}">
+        </div>
+        <div class="filter-group">
+            <select name="sentiment" onchange="this.form.submit()">
+                <option value="all" {% if current_sentiment == 'all' %}selected{% endif %}>All Sentiments</option>
+                <option value="positive" {% if current_sentiment == 'positive' %}selected{% endif %}>Positive Only</option>
+                <option value="negative" {% if current_sentiment == 'negative' %}selected{% endif %}>Negative Only</option>
+                <option value="neutral" {% if current_sentiment == 'neutral' %}selected{% endif %}>Neutral Only</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Filter</button>
+        {% if search_keyword or current_sentiment != 'all' %}
+            <a href="{{ url_for('history_page') }}" class="btn btn-ghost">Reset</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- History Table -->
+<div class="table-card">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Comment Text</th>
+                <th>Domain</th>
+                <th>ML Sentiment</th>
+                <th>Confidence</th>
+                <th>VADER Baseline</th>
+                <th>Source</th>
+                <th>Created At</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if comments %}
+                {% for item in comments %}
+                    <tr>
+                        <td>#{{ item.id }}</td>
+                        <td class="comment-cell" title="{{ item.comment_text }}">{{ item.comment_text }}</td>
+                        <td><span class="domain-tag">{{ item.domain }}</span></td>
+                        <td>
+                            <span class="badge badge-{{ item.sentiment }}">
+                                {{ item.sentiment|capitalize }}
+                            </span>
+                        </td>
+                        <td>{{ (item.confidence * 100)|round(1) }}%</td>
+                        <td>
+                            <span class="vader-chip">{{ item.vader_sentiment|capitalize if item.vader_sentiment else '-' }} ({{ item.vader_compound }})</span>
+                        </td>
+                        <td><span class="source-tag">{{ item.source }}</span></td>
+                        <td class="time-cell">{{ item.created_at }}</td>
+                        <td>
+                            <form action="{{ url_for('delete_record', record_id=item.id) }}" method="POST" onsubmit="return confirm('Delete this comment record?');" style="display:inline;">
+                                <button type="submit" class="btn-delete" title="Delete record">🗑️</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="9" class="text-center empty-state">
+                        No comment records found. 
+                        {% if search_keyword or current_sentiment != 'all' %}
+                            Try adjusting your search or filter filters.
+                        {% else %}
+                            Start by testing a comment on the <a href="{{ url_for('index') }}">Dashboard</a>.
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

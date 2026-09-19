@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Bulk CSV Sentiment Analysis | E-Consultation{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1>Bulk CSV Sentiment Analysis</h1>
+    <p class="subtitle">Upload a batch of e-consultation comments in CSV format. The system will preprocess each comment, extract TF-IDF features, predict sentiment using the trained ML model, and persist records to MySQL.</p>
+</section>
+
+<div class="bulk-grid">
+    <!-- Upload Form Card -->
+    <div class="workspace-card">
+        <div class="card-header">
+            <h2>Upload Dataset File</h2>
+            <span class="card-tag">CSV Only</span>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('predict_bulk') }}" method="POST" enctype="multipart/form-data">
+                <div class="upload-dropzone">
+                    <input type="file" id="csvFile" name="file" accept=".csv" required class="file-input">
+                    <label for="csvFile" class="file-label">
+                        <span class="upload-icon">📂</span>
+                        <span class="upload-title">Choose a CSV file or drag it here</span>
+                        <span class="upload-hint">File must contain a column named <code>comment</code> (optional: <code>domain</code>)</span>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-large">Process Bulk Analysis</button>
+                    <a href="{{ url_for('load_sample_csv') }}" class="btn btn-outline">Test with Sample Dataset (test_comments.csv)</a>
+                </div>
+            </form>
+
+            <div class="csv-requirements">
+                <h3>CSV Format Requirements:</h3>
+                <ul>
+                    <li><strong><code>comment</code></strong> (Required): Text of the patient or provider feedback.</li>
+                    <li><strong><code>domain</code></strong> (Optional): Category (e.g., medication, technical, general). Defaults to <em>general</em> if omitted.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Batch Results Card (If processed) -->
+    {% if bulk_summary %}
+    <div class="workspace-card results-section">
+        <div class="card-header">
+            <h2>Batch Analysis Results Summary</h2>
+            <span class="badge badge-positive">{{ bulk_summary.total }} Comments Processed</span>
+        </div>
+        <div class="card-body">
+            <div class="kpi-grid mini-kpis">
+                <div class="kpi-card mini positive">
+                    <span class="kpi-title">Positive</span>
+                    <span class="kpi-value">{{ bulk_summary.positive }} ({{ bulk_summary.positive_pct }}%)</span>
+                </div>
+                <div class="kpi-card mini negative">
+                    <span class="kpi-title">Negative</span>
+                    <span class="kpi-value">{{ bulk_summary.negative }} ({{ bulk_summary.negative_pct }}%)</span>
+                </div>
+                <div class="kpi-card mini neutral">
+                    <span class="kpi-title">Neutral</span>
+                    <span class="kpi-value">{{ bulk_summary.neutral }} ({{ bulk_summary.neutral_pct }}%)</span>
+                </div>
+            </div>
+
+            <div class="section-header" style="margin-top: 1.5rem;">
+                <h3>Preview of Analyzed Batch</h3>
+                <a href="{{ url_for('export_csv') }}" class="btn btn-outline">Download Full CSV Export</a>
+            </div>
+            
+            <div class="table-card" style="max-height: 400px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Comment</th>
+                            <th>Domain</th>
+                            <th>ML Sentiment</th>
+                            <th>Confidence</th>
+                            <th>VADER Baseline</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in bulk_summary.rows[:50] %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td class="comment-cell">{{ row.comment_text }}</td>
+                            <td><span class="domain-tag">{{ row.domain }}</span></td>
+                            <td>
+                                <span class="badge badge-{{ row.sentiment }}">
+                                    {{ row.sentiment|capitalize }}
+                                </span>
+                            </td>
+                            <td>{{ (row.confidence * 100)|round(1) }}%</td>
+                            <td><span class="vader-chip">{{ row.vader_sentiment|capitalize }} ({{ row.vader_compound }})</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

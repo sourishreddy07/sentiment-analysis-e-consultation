@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}E-Consultation Feedback Sentiment Analysis{% endblock %}</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <header class="navbar">
+        <div class="nav-container">
+            <a href="{{ url_for('index') }}" class="nav-brand">
+                <span class="brand-icon">🩺</span>
+                <span class="brand-title">E-Consult Sentiment AI</span>
+            </a>
+            <nav class="nav-links">
+                <a href="{{ url_for('index') }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
+                <a href="{{ url_for('bulk_page') }}" class="nav-link {% if active_page == 'bulk' %}active{% endif %}">Bulk CSV Analysis</a>
+                <a href="{{ url_for('history_page') }}" class="nav-link {% if active_page == 'history' %}active{% endif %}">History & Records</a>
+            </nav>
+            <div class="nav-badge">
+                <span class="status-dot"></span>
+                <span class="status-text">Flask + Scikit-Learn</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Global Alert / Flash Messages -->
+    <main class="main-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            <span class="alert-icon">
+                                {% if category == 'success' %}✓
+                                {% elif category == 'danger' %}⚠
+                                {% elif category == 'warning' %}ℹ
+                                {% else %}•{% endif %}
+                            </span>
+                            <span class="alert-text">{{ message }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- DB Status Banner if offline -->
+        {% if db_status and not db_status.connected %}
+            <div class="alert alert-danger db-banner">
+                <div class="alert-content">
+                    <strong>⚠️ MySQL Database Disconnected:</strong> {{ db_status.message }}
+                    <div class="db-help-text">
+                        Please ensure your MySQL server (e.g. XAMPP or MySQL 8.0) is running on port 3306. Check your <code>.env</code> file credentials.
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <p>E-Consultation Comment Sentiment Analysis Platform &bull; Built with Flask, NLTK, TF-IDF, Scikit-Learn & MySQL</p>
+            <p class="footer-subtext">Empirical Model Benchmarking: Logistic Regression, Naive Bayes & Linear SVM | Baseline: VADER Lexicon</p>
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

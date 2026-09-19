@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | E-Consultation Sentiment Analysis{% endblock %}
+
+{% block content %}
+<section class="dashboard-header">
+    <div class="header-text">
+        <h1>E-Consultation Feedback Sentiment Analysis</h1>
+        <p class="subtitle">Intelligent Natural Language Processing platform powered by NLTK, TF-IDF feature extraction, and Scikit-Learn supervised classifiers.</p>
+    </div>
+    <div class="model-info-chip">
+        <span class="chip-label">Active Model:</span>
+        <span class="chip-value">{{ metrics.best_model if metrics else 'Linear SVM' }} (F1: {{ metrics.best_f1 if metrics else '93.75' }}%)</span>
+    </div>
+</section>
+
+<!-- KPI Cards -->
+<section class="kpi-grid">
+    <div class="kpi-card total">
+        <div class="kpi-icon">💬</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Total Comments</span>
+            <span class="kpi-value" id="kpi-total">{{ stats.total }}</span>
+            <span class="kpi-subtext">Stored in MySQL</span>
+        </div>
+    </div>
+    <div class="kpi-card positive">
+        <div class="kpi-icon">👍</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Positive Feedback</span>
+            <span class="kpi-value" id="kpi-positive">{{ stats.positive }}</span>
+            <span class="kpi-subtext" id="kpi-positive-pct">{{ stats.positive_pct }}% of total</span>
+        </div>
+    </div>
+    <div class="kpi-card negative">
+        <div class="kpi-icon">👎</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Negative Feedback</span>
+            <span class="kpi-value" id="kpi-negative">{{ stats.negative }}</span>
+            <span class="kpi-subtext" id="kpi-negative-pct">{{ stats.negative_pct }}% of total</span>
+        </div>
+    </div>
+    <div class="kpi-card neutral">
+        <div class="kpi-icon">⚖️</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Neutral / Borderline</span>
+            <span class="kpi-value" id="kpi-neutral">{{ stats.neutral }}</span>
+            <span class="kpi-subtext">Threshold-based (45%-55%)</span>
+        </div>
+    </div>
+</section>
+
+<!-- Main Workspace Grid -->
+<div class="workspace-grid">
+    <!-- Left Column: Single Comment Tester -->
+    <div class="workspace-card form-section">
+        <div class="card-header">
+            <h2>Live Comment Sentiment Tester</h2>
+            <span class="card-tag">Real-Time ML Inference</span>
+        </div>
+        <div class="card-body">
+            <form id="commentForm">
+                <div class="form-group">
+                    <label for="commentText">Enter E-Consultation Comment:</label>
+                    <textarea id="commentText" name="comment" rows="4" placeholder="e.g. The doctor responded quickly and the advice was spot on. Helped resolve my issue without an appointment." required></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label for="domainSelect">Consultation Domain:</label>
+                        <select id="domainSelect" name="domain">
+                            <option value="general">General</option>
+                            <option value="medication">Medication & Pharmacy</option>
+                            <option value="technical">Technical & System</option>
+                            <option value="mental_health">Mental Health</option>
+                            <option value="diagnostics">Diagnostics & Labs</option>
+                            <option value="availability">Specialist Availability</option>
+                            <option value="usability">UI & Usability</option>
+                            <option value="nutrition">Nutrition & Diet</option>
+                            <option value="billing">Billing & Claims</option>
+                            <option value="accessibility">Accessibility</option>
+                            <option value="safety">Patient Safety</option>
+                            <option value="dermatology">Dermatology</option>
+                            <option value="chronic_care">Chronic Care</option>
+                            <option value="rehab">Rehabilitation</option>
+                        </select>
+                    </div>
+                    <div class="form-group half action-group">
+                        <button type="submit" id="analyzeBtn" class="btn btn-primary">
+                            <span class="btn-text">Analyze Sentiment</span>
+                            <span class="spinner" style="display: none;">⏳</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Result Card (Revealed after submission) -->
+            <div id="predictionResult" class="result-card" style="display: none;">
+                <div class="result-header">
+                    <h3>Prediction Results</h3>
+                    <span id="resultTimestamp" class="timestamp"></span>
+                </div>
+                
+                <div class="result-body">
+                    <!-- Primary ML Result -->
+                    <div class="primary-prediction">
+                        <span class="badge-label">Primary ML Classification:</span>
+                        <div class="badge-container">
+                            <span id="sentimentBadge" class="sentiment-badge"></span>
+                            <span id="confidenceScore" class="confidence-tag"></span>
+                        </div>
+                    </div>
+
+                    <!-- Confidence Progress Bar -->
+                    <div class="confidence-bar-container">
+                        <div class="confidence-bar-header">
+                            <span>Classification Confidence:</span>
+                            <span id="confidencePercent"></span>
+                        </div>
+                        <div class="progress-track">
+                            <div id="confidenceProgress" class="progress-fill"></div>
+                        </div>
+                    </div>
+
+                    <!-- Preprocessing Insight -->
+                    <div class="preprocess-box">
+                        <strong>NLTK Preprocessed Tokens:</strong>
+                        <code id="preprocessedText"></code>
+                    </div>
+
+                    <!-- VADER Baseline Comparison -->
+                    <div class="vader-comparison-box">
+                        <div class="vader-header">
+                            <span>Reference Baseline: VADER Lexicon</span>
+                            <span id="vaderBadge" class="vader-badge"></span>
+                        </div>
+                        <div class="vader-details">
+                            <span>Compound Score: <strong id="vaderCompound"></strong></span>
+                            <span>(Pos: <span id="vaderPos"></span> | Neg: <span id="vaderNeg"></span> | Neu: <span id="vaderNeu"></span>)</span>
+                        </div>
+                    </div>
+
+                    <!-- Note on neutral -->
+                    <div class="neutral-note">
+                        <small>ℹ️ <em>Note: The ML model is trained on ground-truth Positive and Negative classes. "Neutral" classifications represent borderline comments whose prediction confidence falls within the uncertainty window (45% - 55%).</em></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Visualizations -->
+    <div class="workspace-card charts-section">
+        <div class="card-header">
+            <h2>Sentiment Analytics & Benchmarks</h2>
+            <div class="chart-tab-buttons">
+                <button class="tab-btn active" onclick="switchTab('distribution')">Distribution</button>
+                <button class="tab-btn" onclick="switchTab('domains')">Domains</button>
+                <button class="tab-btn" onclick="switchTab('benchmarks')">Model Metrics</button>
+            </div>
+        </div>
+        <div class="card-body chart-wrapper">
+            <!-- Chart 1: Distribution -->
+            <div id="tab-distribution" class="tab-content active">
+                <div class="chart-container">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 2: Domain Breakdown -->
+            <div id="tab-domains" class="tab-content">
+                <div class="chart-container">
+                    <canvas id="domainChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 3: Model Benchmarks -->
+            <div id="tab-benchmarks" class="tab-content">
+                <div class="chart-container">
+                    <canvas id="benchmarkChart"></canvas>
+                </div>
+                <div class="benchmark-summary">
+                    <small>Evaluated on <code>econsult_comments_dataset.csv</code> (80/20 Stratified Split) using unigram & bigram TF-IDF features.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Comments Section -->
+<section class="recent-comments-section">
+    <div class="section-header">
+        <h2>Recent Analyzed Comments</h2>
+        <a href="{{ url_for('history_page') }}" class="btn btn-outline">View Full History →</a>
+    </div>
+    <div class="table-card">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Comment</th>
+                    <th>Domain</th>
+                    <th>ML Sentiment</th>
+                    <th>Confidence</th>
+                    <th>VADER Baseline</th>
+                    <th>Recorded At</th>
+                </tr>
+            </thead>
+            <tbody id="recentCommentsBody">
+                {% if stats.recent_comments %}
+                    {% for item in stats.recent_comments %}
+                        <tr>
+                            <td>#{{ item.id }}</td>
+                            <td class="comment-cell" title="{{ item.comment_text }}">{{ item.comment_text }}</td>
+                            <td><span class="domain-tag">{{ item.domain }}</span></td>
+                            <td>
+                                <span class="badge badge-{{ item.sentiment }}">
+                                    {{ item.sentiment|capitalize }}
+                                </span>
+                            </td>
+                            <td>{{ (item.confidence * 100)|round(1) }}%</td>
+                            <td>
+                                <span class="vader-chip">{{ item.vader_sentiment|capitalize if item.vader_sentiment else '-' }} ({{ item.vader_compound }})</span>
+                            </td>
+                            <td class="time-cell">{{ item.created_at }}</td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center empty-state">No comments analyzed yet. Submit a comment above or upload a CSV dataset!</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Embed initial data from Flask backend for Chart.js
+    const initialStats = {{ stats | tojson | safe }};
+    const initialMetrics = {{ metrics | tojson | safe }};
+</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}
