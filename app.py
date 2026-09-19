@@ -506,12 +506,10 @@ def predict_sentiment_single(comment_text: str):
 # DASHBOARD
 # ============================================================
 
-@app.route("/")
-def index():
 
-    status = get_db_status()
-
-    stats = {
+def empty_stats():
+    """Return the dashboard payload used when the app is first opened."""
+    return {
         "total": 0,
         "positive": 0,
         "negative": 0,
@@ -523,19 +521,12 @@ def index():
         "recent_comments": []
     }
 
-    if status["connected"]:
 
-        try:
+@app.route("/")
+def index():
 
-            stats = db.get_dashboard_stats()
-
-        except Exception as error:
-
-            flash(
-                "Error fetching dashboard statistics: "
-                f"{error}",
-                "danger"
-            )
+    status = get_db_status()
+    stats = empty_stats()
 
     return render_template(
         "index.html",
