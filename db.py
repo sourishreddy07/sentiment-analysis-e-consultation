@@ -16,14 +16,14 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-DB_HOST = os.getenv('DB_HOST', '127.0.0.1')
+DB_HOST = (os.getenv('DB_HOST') or '127.0.0.1').strip()
 if DB_HOST.lower() == 'localhost':
     DB_HOST = '127.0.0.1'
 
-DB_PORT = int(os.getenv('DB_PORT', 3306))
-DB_USER = os.getenv('DB_USER', 'root')
-DB_PASSWORD = os.getenv('DB_PASSWORD', '')
-DB_NAME = os.getenv('DB_NAME', 'sentiment_analysis')
+DB_PORT = int((os.getenv('DB_PORT') or 3306))
+DB_USER = (os.getenv('DB_USER') or 'root').strip()
+DB_PASSWORD = os.getenv('DB_PASSWORD') or ''
+DB_NAME = (os.getenv('DB_NAME') or 'sentiment_analysis').strip()
 
 # Cache DB connection status for 5 seconds to prevent repeated timeouts
 _STATUS_CACHE = {'connected': False, 'message': '', 'expires_at': 0}
@@ -142,10 +142,21 @@ def init_db():
                 vader_sentiment VARCHAR(20) DEFAULT NULL,
                 vader_compound FLOAT DEFAULT NULL,
                 source VARCHAR(50) DEFAULT 'manual',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                demo_session_id VARCHAR(100) DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_demo_session (demo_session_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
             cursor.execute(create_table_sql)
+
+            # Safe conditional migration: add demo_session_id column if not present
+            cursor.execute("SHOW COLUMNS FROM comments LIKE 'demo_session_id'")
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE comments ADD COLUMN demo_session_id VARCHAR(100) NULL")
+                try:
+                    cursor.execute("CREATE INDEX idx_demo_session ON comments (demo_session_id)")
+                except Exception:
+                    pass
         conn.close()
         return True
     except Exception as e:
@@ -153,19 +164,20 @@ def init_db():
 
 
 def insert_comment(comment_text, domain, sentiment, confidence,
-                   vader_sentiment=None, vader_compound=None, source='manual'):
-    """Inserts a single prediction record into MySQL."""
+                   vader_sentiment=None, vader_compound=None, source='manual',
+                   demo_session_id=None):
+    """Inserts a single prediction record into MySQL with optional session identifier."""
     conn = get_connection(use_database=True)
     try:
         with conn.cursor() as cursor:
             sql = """
             INSERT INTO comments 
-            (comment_text, domain, sentiment, confidence, vader_sentiment, vader_compound, source)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (comment_text, domain, sentiment, confidence, vader_sentiment, vader_compound, source, demo_session_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(sql, (
                 comment_text, domain, sentiment, confidence,
-                vader_sentiment, vader_compound, source
+                vader_sentiment, vader_compound, source, demo_session_id
             ))
             return cursor.lastrowid
     finally:
@@ -179,25 +191,36 @@ def insert_bulk_comments(records):
     conn = get_connection(use_database=True)
     try:
         with conn.cursor() as cursor:
-            sql = """
-            INSERT INTO comments 
-            (comment_text, domain, sentiment, confidence, vader_sentiment, vader_compound, source)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
+            if len(records[0]) == 8:
+                sql = """
+                INSERT INTO comments 
+                (comment_text, domain, sentiment, confidence, vader_sentiment, vader_compound, source, demo_session_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """
+            else:
+                sql = """
+                INSERT INTO comments 
+                (comment_text, domain, sentiment, confidence, vader_sentiment, vader_compound, source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
             cursor.executemany(sql, records)
             return cursor.rowcount
     finally:
         conn.close()
 
 
-def get_all_comments(limit=200, search_keyword=None, sentiment_filter=None):
-    """Fetches stored comments with optional keyword and sentiment filtering."""
+def get_all_comments(limit=200, search_keyword=None, sentiment_filter=None, session_id=None):
+    """Fetches stored comments with optional keyword, sentiment, and session filtering."""
     conn = get_connection(use_database=True)
     try:
         with conn.cursor() as cursor:
             query = "SELECT * FROM comments WHERE 1=1"
             params = []
             
+            if session_id:
+                query += " AND demo_session_id = %s"
+                params.append(session_id)
+                
             if search_keyword:
                 query += " AND comment_text LIKE %s"
                 params.append(f"%{search_keyword}%")
@@ -215,26 +238,32 @@ def get_all_comments(limit=200, search_keyword=None, sentiment_filter=None):
         conn.close()
 
 
-def get_dashboard_stats():
-    """Calculates summary KPIs and domain-wise metrics from MySQL."""
+def get_dashboard_stats(session_id=None):
+    """Calculates summary KPIs and domain-wise metrics from MySQL, optionally scoped to a session."""
     conn = get_connection(use_database=True)
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) AS total FROM comments")
+            where_clause = " WHERE demo_session_id = %s" if session_id else ""
+            params = (session_id,) if session_id else ()
+            
+            cursor.execute(f"SELECT COUNT(*) AS total FROM comments{where_clause}", params)
             total = cursor.fetchone()['total']
             
             cursor.execute(
-                "SELECT sentiment, COUNT(*) AS count FROM comments GROUP BY sentiment"
+                f"SELECT sentiment, COUNT(*) AS count FROM comments{where_clause} GROUP BY sentiment",
+                params
             )
             sentiment_rows = cursor.fetchall()
             
             cursor.execute(
-                "SELECT domain, sentiment, COUNT(*) AS count FROM comments GROUP BY domain, sentiment"
+                f"SELECT domain, sentiment, COUNT(*) AS count FROM comments{where_clause} GROUP BY domain, sentiment",
+                params
             )
             domain_rows = cursor.fetchall()
             
             cursor.execute(
-                "SELECT * FROM comments ORDER BY created_at DESC LIMIT 10"
+                f"SELECT * FROM comments{where_clause} ORDER BY created_at DESC LIMIT 10",
+                params
             )
             recent_comments = cursor.fetchall()
             
@@ -257,7 +286,8 @@ def get_dashboard_stats():
             'negative_pct': round((neg / total * 100), 1) if total > 0 else 0,
             'neutral_pct': round((neu / total * 100), 1) if total > 0 else 0,
             'domain_distribution': domain_rows,
-            'recent_comments': recent_comments
+            'recent_comments': recent_comments,
+            'session_id': session_id
         }
         return stats
     finally:

@@ -156,10 +156,15 @@ function displayPredictionResult(data) {
 function updateKPIs(sentiment) {
     const totalEl = document.getElementById('kpi-total');
     const targetEl = document.getElementById(`kpi-${sentiment}`);
+    const sessionCountEl = document.getElementById('sessionCommentsCount');
 
     if (totalEl) {
         const curTotal = parseInt(totalEl.textContent) || 0;
         totalEl.textContent = curTotal + 1;
+    }
+    if (sessionCountEl) {
+        const curSess = parseInt(sessionCountEl.textContent) || 0;
+        sessionCountEl.textContent = curSess + 1;
     }
     if (targetEl) {
         const curTarget = parseInt(targetEl.textContent) || 0;
@@ -194,10 +199,16 @@ function initDistributionChart(stats) {
     const ctx = document.getElementById('distributionChart');
     if (!ctx) return;
 
+    const total = stats.total || 0;
+    const hasData = total > 0;
+    const chartData = hasData
+        ? [stats.positive || 0, stats.negative || 0, stats.neutral || 0]
+        : [0, 0, 0];
+
     const data = {
         labels: ['Positive', 'Negative', 'Neutral / Borderline'],
         datasets: [{
-            data: [stats.positive || 0, stats.negative || 0, stats.neutral || 0],
+            data: chartData,
             backgroundColor: ['#10b981', '#ef4444', '#6366f1'],
             borderWidth: 2,
             borderColor: '#ffffff',
@@ -218,7 +229,7 @@ function initDistributionChart(stats) {
                 },
                 title: {
                     display: true,
-                    text: 'Overall Feedback Sentiment Breakdown',
+                    text: hasData ? 'Session Sentiment Breakdown' : 'Session Sentiment Breakdown (Awaiting Comments)',
                     font: { family: 'Inter', size: 14, weight: '600' }
                 }
             },
@@ -230,20 +241,23 @@ function initDistributionChart(stats) {
 // Chart 2: Domain-wise Stacked Bar
 function initDomainChart(stats) {
     const ctx = document.getElementById('domainChart');
-    if (!ctx || !stats.domain_distribution) return;
+    if (!ctx) return;
 
     // Aggregate by domain
     const domains = {};
-    stats.domain_distribution.forEach(row => {
-        const dom = row.domain || 'general';
-        if (!domains[dom]) domains[dom] = { positive: 0, negative: 0, neutral: 0 };
-        domains[dom][row.sentiment.toLowerCase()] = row.count;
-    });
+    if (stats && stats.domain_distribution) {
+        stats.domain_distribution.forEach(row => {
+            const dom = row.domain || 'general';
+            if (!domains[dom]) domains[dom] = { positive: 0, negative: 0, neutral: 0 };
+            domains[dom][row.sentiment.toLowerCase()] = row.count;
+        });
+    }
 
-    const labels = Object.keys(domains);
-    const posData = labels.map(d => domains[d].positive);
-    const negData = labels.map(d => domains[d].negative);
-    const neuData = labels.map(d => domains[d].neutral);
+    const hasDomains = Object.keys(domains).length > 0;
+    const labels = hasDomains ? Object.keys(domains) : ['GENERAL'];
+    const posData = labels.map(d => (domains[d] ? domains[d].positive : 0));
+    const negData = labels.map(d => (domains[d] ? domains[d].negative : 0));
+    const neuData = labels.map(d => (domains[d] ? domains[d].neutral : 0));
 
     domainChartInstance = new Chart(ctx, {
         type: 'bar',
@@ -266,7 +280,7 @@ function initDomainChart(stats) {
                 legend: { position: 'bottom' },
                 title: {
                     display: true,
-                    text: 'Sentiment by Healthcare Domain',
+                    text: hasDomains ? 'Sentiment by Healthcare Domain' : 'Sentiment by Healthcare Domain (Awaiting Comments)',
                     font: { family: 'Inter', size: 14, weight: '600' }
                 }
             }
@@ -319,13 +333,57 @@ async function refreshCharts() {
     try {
         const res = await fetch('/api/stats');
         const stats = await res.json();
-        if (distributionChartInstance && stats) {
+        if (!stats) return;
+
+        // Sync KPI numbers
+        if (typeof stats.total !== 'undefined') {
+            const totalEl = document.getElementById('kpi-total');
+            const sessEl = document.getElementById('sessionCommentsCount');
+            const posEl = document.getElementById('kpi-positive');
+            const negEl = document.getElementById('kpi-negative');
+            const neuEl = document.getElementById('kpi-neutral');
+            const posPct = document.getElementById('kpi-positive-pct');
+            const negPct = document.getElementById('kpi-negative-pct');
+
+            if (totalEl) totalEl.textContent = stats.total;
+            if (sessEl) sessEl.textContent = stats.total;
+            if (posEl) posEl.textContent = stats.positive || 0;
+            if (negEl) negEl.textContent = stats.negative || 0;
+            if (neuEl) neuEl.textContent = stats.neutral || 0;
+            if (posPct) posPct.textContent = `${stats.positive_pct || 0}% of total`;
+            if (negPct) negPct.textContent = `${stats.negative_pct || 0}% of total`;
+        }
+
+        if (distributionChartInstance) {
             distributionChartInstance.data.datasets[0].data = [
                 stats.positive || 0,
                 stats.negative || 0,
                 stats.neutral || 0
             ];
+            if (stats.total > 0 && distributionChartInstance.options.plugins.title) {
+                distributionChartInstance.options.plugins.title.text = 'Session Sentiment Breakdown';
+            }
             distributionChartInstance.update();
+        }
+
+        if (domainChartInstance && stats.domain_distribution) {
+            const domains = {};
+            stats.domain_distribution.forEach(row => {
+                const dom = row.domain || 'general';
+                if (!domains[dom]) domains[dom] = { positive: 0, negative: 0, neutral: 0 };
+                domains[dom][row.sentiment.toLowerCase()] = row.count;
+            });
+            const labels = Object.keys(domains);
+            if (labels.length > 0) {
+                domainChartInstance.data.labels = labels.map(l => l.replace('_', ' ').toUpperCase());
+                domainChartInstance.data.datasets[0].data = labels.map(d => domains[d].positive);
+                domainChartInstance.data.datasets[1].data = labels.map(d => domains[d].negative);
+                domainChartInstance.data.datasets[2].data = labels.map(d => domains[d].neutral);
+                if (domainChartInstance.options.plugins.title) {
+                    domainChartInstance.options.plugins.title.text = 'Sentiment by Healthcare Domain';
+                }
+                domainChartInstance.update();
+            }
         }
     } catch (e) {
         console.warn('Chart refresh warning:', e);

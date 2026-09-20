@@ -22,6 +22,12 @@
             <input type="text" name="search" placeholder="Search comments by keyword..." value="{{ search_keyword or '' }}">
         </div>
         <div class="filter-group">
+            <select name="scope" onchange="this.form.submit()">
+                <option value="all" {% if current_scope != 'session' %}selected{% endif %}>Scope: All Database Records</option>
+                <option value="session" {% if current_scope == 'session' %}selected{% endif %}>Scope: Current Demo Session Only</option>
+            </select>
+        </div>
+        <div class="filter-group">
             <select name="sentiment" onchange="this.form.submit()">
                 <option value="all" {% if current_sentiment == 'all' %}selected{% endif %}>All Sentiments</option>
                 <option value="positive" {% if current_sentiment == 'positive' %}selected{% endif %}>Positive Only</option>
@@ -30,7 +36,7 @@
             </select>
         </div>
         <button type="submit" class="btn btn-primary">Filter</button>
-        {% if search_keyword or current_sentiment != 'all' %}
+        {% if search_keyword or current_sentiment != 'all' or current_scope == 'session' %}
             <a href="{{ url_for('history_page') }}" class="btn btn-ghost">Reset</a>
         {% endif %}
     </form>

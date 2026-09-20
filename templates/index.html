@@ -8,9 +8,19 @@
         <h1>E-Consultation Feedback Sentiment Analysis</h1>
         <p class="subtitle">Intelligent Natural Language Processing platform powered by NLTK, TF-IDF feature extraction, and Scikit-Learn supervised classifiers.</p>
     </div>
-    <div class="model-info-chip">
-        <span class="chip-label">Active Model:</span>
-        <span class="chip-value">{{ metrics.best_model if metrics else 'Linear SVM' }} (F1: {{ metrics.best_f1 if metrics else '93.75' }}%)</span>
+    <div class="header-chips">
+        <div class="session-info-chip" title="Active demo session (ID: {{ demo_session_id }}). Dashboard statistics track this session.">
+            <span class="session-indicator-dot"></span>
+            <span class="chip-label">Demo Session:</span>
+            <span class="chip-status">Active</span>
+            <span class="chip-sep">•</span>
+            <span class="chip-label">Session Comments:</span>
+            <span class="chip-value" id="sessionCommentsCount">{{ stats.total }}</span>
+        </div>
+        <div class="model-info-chip">
+            <span class="chip-label">Active Model:</span>
+            <span class="chip-value">{{ metrics.best_model if metrics else 'Linear SVM' }} (F1: {{ metrics.best_f1 if metrics else '93.75' }}%)</span>
+        </div>
     </div>
 </section>
 
@@ -21,7 +31,7 @@
         <div class="kpi-details">
             <span class="kpi-title">Total Comments</span>
             <span class="kpi-value" id="kpi-total">{{ stats.total }}</span>
-            <span class="kpi-subtext">Stored in MySQL</span>
+            <span class="kpi-subtext">Current Session (MySQL Persistent)</span>
         </div>
     </div>
     <div class="kpi-card positive">
@@ -236,10 +246,13 @@
 {% endblock %}
 
 {% block scripts %}
+<script id="initial-stats-data" type="application/json">{{ stats | tojson | safe }}</script>
+<script id="initial-metrics-data" type="application/json">{{ metrics | tojson | safe }}</script>
 <script>
     // Embed initial data from Flask backend for Chart.js
-    const initialStats = {{ stats | tojson | safe }};
-    const initialMetrics = {{ metrics | tojson | safe }};
+    const initialStats = JSON.parse(document.getElementById('initial-stats-data').textContent || '{}');
+    const initialMetrics = JSON.parse(document.getElementById('initial-metrics-data').textContent || '{}');
 </script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
+

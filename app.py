@@ -16,6 +16,7 @@ Features:
 import io
 import json
 import os
+import uuid
 
 import joblib
 import pandas as pd
@@ -53,6 +54,14 @@ app.secret_key = os.getenv(
     "SECRET_KEY",
     "econsult_sentiment_secret_key_2026"
 )
+
+# ------------------------------------------------------------
+# DEMO SESSION IDENTIFIER
+# Generates once per Flask application startup (persists on browser refresh)
+# ------------------------------------------------------------
+CURRENT_DEMO_SESSION_ID = f"sess_{uuid.uuid4().hex[:12]}"
+print(f"[+] Active Demo Session: {CURRENT_DEMO_SESSION_ID}")
+
 
 
 # ============================================================
@@ -528,12 +537,19 @@ def index():
     status = get_db_status()
     stats = empty_stats()
 
+    if status["connected"]:
+        try:
+            stats = db.get_dashboard_stats(session_id=CURRENT_DEMO_SESSION_ID)
+        except Exception as error:
+            print(f"[!] Error fetching dashboard stats: {error}")
+
     return render_template(
         "index.html",
         active_page="dashboard",
         db_status=status,
         stats=stats,
-        metrics=metrics_data
+        metrics=metrics_data,
+        demo_session_id=CURRENT_DEMO_SESSION_ID
     )
 
 
@@ -642,7 +658,9 @@ def predict():
                     "vader"
                 ]["compound"],
 
-                source="manual"
+                source="manual",
+
+                demo_session_id=CURRENT_DEMO_SESSION_ID
             )
 
             db_saved = True
@@ -693,7 +711,9 @@ def predict():
 
         "db_saved": db_saved,
 
-        "db_warning": db_warning
+        "db_warning": db_warning,
+
+        "demo_session_id": CURRENT_DEMO_SESSION_ID
     }
 
     # --------------------------------------------------------
@@ -943,7 +963,8 @@ def predict_bulk():
                     prediction[
                         "vader"
                     ]["compound"],
-                    "bulk_upload"
+                    "bulk_upload",
+                    CURRENT_DEMO_SESSION_ID
                 )
             )
 
@@ -1246,7 +1267,8 @@ def load_sample_csv():
                     prediction[
                         "vader"
                     ]["compound"],
-                    "sample_test"
+                    "sample_test",
+                    CURRENT_DEMO_SESSION_ID
                 )
             )
 
@@ -1415,7 +1437,7 @@ def history_page():
         )
 
     # --------------------------------------------------------
-    # Search/filter
+    # Search/filter/scope
     # --------------------------------------------------------
 
     search = request.args.get(
@@ -1427,6 +1449,13 @@ def history_page():
         "sentiment",
         "all"
     ).strip().lower()
+
+    scope = request.args.get(
+        "scope",
+        "all"
+    ).strip().lower()
+
+    session_filter_id = CURRENT_DEMO_SESSION_ID if scope == "session" else None
 
     try:
 
@@ -1444,7 +1473,9 @@ def history_page():
                 sentiment
                 if sentiment != "all"
                 else None
-            )
+            ),
+
+            session_id=session_filter_id
         )
 
         return render_template(
@@ -1458,7 +1489,11 @@ def history_page():
 
             search_keyword=search,
 
-            current_sentiment=sentiment
+            current_sentiment=sentiment,
+
+            current_scope=scope,
+
+            demo_session_id=CURRENT_DEMO_SESSION_ID
         )
 
     except Exception as error:
@@ -1565,11 +1600,19 @@ def api_stats():
 
     try:
 
+        scope = request.args.get(
+            "scope",
+            "session"
+        ).strip().lower()
+
+        sess_id = CURRENT_DEMO_SESSION_ID if scope == "session" else None
+
         stats = (
-            db.get_dashboard_stats()
+            db.get_dashboard_stats(session_id=sess_id)
         )
 
         stats["connected"] = True
+        stats["session_id"] = CURRENT_DEMO_SESSION_ID
 
         return jsonify(
             stats
@@ -1686,6 +1729,11 @@ def server_error(error):
 
 if __name__ == "__main__":
 
+    host = os.getenv(
+        "HOST",
+        "0.0.0.0"
+    )
+
     port = int(
         os.getenv(
             "PORT",
@@ -1693,13 +1741,20 @@ if __name__ == "__main__":
         )
     )
 
+    debug_mode = str(
+        os.getenv(
+            "FLASK_DEBUG",
+            "1"
+        )
+    ).lower() in {"1", "true", "yes", "on"}
+
     print(
         "[*] Starting E-Consult Sentiment AI "
-        f"on http://127.0.0.1:{port}"
+        f"on http://{host}:{port}"
     )
 
     app.run(
-        host="127.0.0.1",
+        host=host,
         port=port,
-        debug=True
+        debug=debug_mode
     )
