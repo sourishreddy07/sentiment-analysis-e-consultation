@@ -221,18 +221,19 @@ The repository excludes local configuration files (`.env`) from version control 
    ```powershell
    Copy-Item .env.example .env
    ```
-2. Open `.env` and set your local database parameters:
+2. Open `.env` and configure your local environment parameters (users must create and maintain their own local `.env` file; real credentials and secret keys must never be committed to Git):
    ```ini
-   # MySQL Database Configuration
-   DB_HOST=localhost
+   DB_HOST=127.0.0.1
    DB_PORT=3306
    DB_USER=root
    DB_PASSWORD=your_mysql_password
    DB_NAME=sentiment_analysis
-
-   # Flask Secret Key
-   SECRET_KEY=your_random_secret_key
+   SECRET_KEY=replace_with_a_random_secret_key
+   PORT=5000
    ```
+
+> **Security Warning:** Real credentials and secret keys must never be committed to version control. The `.env` file is untracked by default.
+
 
 ---
 
