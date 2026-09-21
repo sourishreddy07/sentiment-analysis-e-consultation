@@ -20,6 +20,7 @@ import os
 import uuid
 
 import joblib
+import numpy as np
 import pandas as pd
 
 from flask import (
@@ -181,6 +182,28 @@ except Exception as error:
         "[!] Error loading ML model/vectorizer: "
         f"{error}"
     )
+
+
+# ------------------------------------------------------------
+# MODEL EXPLAINABILITY WEIGHTS & FEATURE NAMES
+# ------------------------------------------------------------
+_MODEL_WEIGHTS = None
+_FEATURE_NAMES = None
+
+if model is not None and vectorizer is not None:
+    try:
+        if hasattr(model, "calibrated_classifiers_"):
+            _MODEL_WEIGHTS = np.mean([cc.estimator.coef_[0] for cc in model.calibrated_classifiers_], axis=0)
+        elif hasattr(model, "coef_"):
+            _MODEL_WEIGHTS = model.coef_[0]
+        if hasattr(vectorizer, "get_feature_names_out"):
+            _FEATURE_NAMES = np.array(vectorizer.get_feature_names_out())
+        elif hasattr(vectorizer, "get_feature_names"):
+            _FEATURE_NAMES = np.array(vectorizer.get_feature_names())
+        print("[+] Model explainability weights and feature vocabulary initialized.")
+    except Exception as exp_init_err:
+        print(f"[!] Note on explainability init: {exp_init_err}")
+
 
 
 # ============================================================
@@ -513,6 +536,142 @@ def predict_sentiment_single(comment_text: str):
 
 
 # ============================================================
+# MODEL EXPLAINABILITY ENGINE (EXTENSION #10)
+# ============================================================
+
+def explain_sentiment(comment_text, prediction=None):
+    """
+    Computes a TF-IDF feature contribution-based explanation for the trained sentiment classifier.
+    Calculates token-level contributions (C_j = tfidf_j * weight_j) to explain which words
+    pulled the prediction toward Positive or Negative, and compares ML prediction with VADER baseline.
+    """
+    if not comment_text or not isinstance(comment_text, str) or not comment_text.strip():
+        return {
+            "status": "empty",
+            "message": "Comment is empty. No features to explain.",
+            "predicted_sentiment": "neutral",
+            "confidence": 0.0,
+            "vader_sentiment": "neutral",
+            "agreement": True,
+            "summary": "No explanatory features found because the comment is empty.",
+            "top_features": [],
+            "positive_features": [],
+            "negative_features": []
+        }
+
+    # Run prediction if not provided
+    if prediction is None:
+        prediction = predict_sentiment_single(comment_text)
+
+    ml_sentiment = prediction.get("sentiment", "neutral")
+    confidence = prediction.get("confidence", 0.0)
+    vader = prediction.get("vader") or get_vader_sentiment(comment_text)
+    vader_sentiment = vader.get("sentiment", "neutral")
+    agreement = (ml_sentiment.lower() == vader_sentiment.lower())
+
+    if model is None or vectorizer is None or _MODEL_WEIGHTS is None or _FEATURE_NAMES is None:
+        return {
+            "status": "unavailable",
+            "message": "Feature-level explanation is unavailable for this model configuration.",
+            "predicted_sentiment": ml_sentiment,
+            "confidence": confidence,
+            "vader_sentiment": vader_sentiment,
+            "agreement": agreement,
+            "summary": "Feature-level explanation is unavailable because model weights are not loaded.",
+            "top_features": [],
+            "positive_features": [],
+            "negative_features": []
+        }
+
+    cleaned = preprocess_comment(comment_text)
+    if not cleaned:
+        return {
+            "status": "no_tokens",
+            "message": "No recognized tokens remained after NLTK preprocessing.",
+            "predicted_sentiment": ml_sentiment,
+            "confidence": confidence,
+            "vader_sentiment": vader_sentiment,
+            "agreement": agreement,
+            "summary": "The comment contained only stop words or special characters. No recognized TF-IDF features were available to explain.",
+            "top_features": [],
+            "positive_features": [],
+            "negative_features": []
+        }
+
+    try:
+        X_vec = vectorizer.transform([cleaned])
+        non_zero_indices = X_vec.nonzero()[1]
+
+        features = []
+        for idx in non_zero_indices:
+            word = str(_FEATURE_NAMES[idx])
+            tfidf_val = float(X_vec[0, idx])
+            wt = float(_MODEL_WEIGHTS[idx])
+            c = round(tfidf_val * wt, 4)
+            direction = "positive" if c > 0 else "negative"
+            features.append({
+                "word": word,
+                "tfidf": round(tfidf_val, 4),
+                "weight": round(wt, 4),
+                "contribution": c,
+                "direction": direction
+            })
+
+        features.sort(key=lambda x: abs(x["contribution"]), reverse=True)
+        pos_feats = [f for f in features if f["direction"] == "positive"]
+        neg_feats = [f for f in features if f["direction"] == "negative"]
+
+        pos_feats.sort(key=lambda x: x["contribution"], reverse=True)
+        neg_feats.sort(key=lambda x: abs(x["contribution"]), reverse=True)
+
+        top_features = features[:10]
+
+        if not top_features:
+            summary = "No explanatory TF-IDF features found in the training vocabulary. The prediction was guided by base class prior/VADER baseline."
+        elif ml_sentiment.lower() == "positive":
+            top_pos_words = [f["word"] for f in pos_feats[:2]]
+            if top_pos_words:
+                quoted = ", ".join(f"'{w}'" for w in top_pos_words)
+                summary = f"The model classified this comment as Positive because the strongest contributing TF-IDF features were {quoted}."
+            else:
+                summary = "The model classified this comment as Positive based on calibrated probability threshold."
+        elif ml_sentiment.lower() == "negative":
+            top_neg_words = [f["word"] for f in neg_feats[:2]]
+            if top_neg_words:
+                quoted = ", ".join(f"'{w}'" for w in top_neg_words)
+                summary = f"The model classified this comment as Negative because the strongest contributing features included {quoted}."
+            else:
+                summary = "The model classified this comment as Negative based on calibrated probability threshold."
+        else:
+            summary = "The model classified this comment as Neutral because positive and negative feature contributions balanced closely within the uncertainty margin (45% - 55%)."
+
+        return {
+            "status": "success",
+            "predicted_sentiment": ml_sentiment,
+            "confidence": confidence,
+            "vader_sentiment": vader_sentiment,
+            "agreement": agreement,
+            "summary": summary,
+            "top_features": top_features,
+            "positive_features": pos_feats[:10],
+            "negative_features": neg_feats[:10]
+        }
+    except Exception as exp_err:
+        return {
+            "status": "error",
+            "error": str(exp_err),
+            "predicted_sentiment": ml_sentiment,
+            "confidence": confidence,
+            "vader_sentiment": vader_sentiment,
+            "agreement": agreement,
+            "summary": f"Could not generate feature explanation: {exp_err}",
+            "top_features": [],
+            "positive_features": [],
+            "negative_features": []
+        }
+
+
+# ============================================================
 # DASHBOARD
 # ============================================================
 
@@ -714,7 +873,12 @@ def predict():
 
         "db_warning": db_warning,
 
-        "demo_session_id": CURRENT_DEMO_SESSION_ID
+        "demo_session_id": CURRENT_DEMO_SESSION_ID,
+
+        "explanation": explain_sentiment(
+            comment,
+            prediction
+        )
     }
 
     # --------------------------------------------------------
@@ -745,6 +909,46 @@ def predict():
     return redirect(
         url_for("index")
     )
+
+
+# ============================================================
+# MODEL EXPLAINABILITY ENDPOINT (EXTENSION #10)
+# ============================================================
+
+@app.route(
+    "/api/explain",
+    methods=["POST"]
+)
+def api_explain():
+    """
+    Returns feature-level TF-IDF contribution explanation for a comment without saving to MySQL.
+    Input: JSON {"comment": "..."} or form data "comment".
+    """
+    if request.is_json:
+        data = request.get_json() or {}
+        comment = str(data.get("comment", "")).strip()
+    else:
+        comment = request.form.get("comment", "").strip()
+
+    if not comment:
+        return jsonify({
+            "success": False,
+            "error": "Comment text cannot be empty."
+        }), 400
+
+    prediction = predict_sentiment_single(comment)
+    explanation = explain_sentiment(comment, prediction)
+
+    return jsonify({
+        "success": True,
+        "comment": comment,
+        "prediction": {
+            "sentiment": prediction.get("sentiment"),
+            "confidence": prediction.get("confidence")
+        },
+        "vader": prediction.get("vader"),
+        "explanation": explanation
+    })
 
 
 # ============================================================
@@ -1845,6 +2049,305 @@ def model_performance_page():
         chart_payload=chart_payload,
         cm_details=cm_details
     )
+
+
+# ============================================================
+# ADVANCED ANALYTICS (EXTENSION #8)
+# ============================================================
+
+def _fetch_analytics_payload(scope='all', period='daily', date_from='', date_to=''):
+    """Helper to query all analytical metrics based on scope, period, and date filters."""
+    session_id = CURRENT_DEMO_SESSION_ID if scope == 'session' else None
+    d_from = date_from.strip() if date_from else None
+    d_to = date_to.strip() if date_to else None
+    p = period.strip().lower() if period in {'daily', 'weekly', 'monthly'} else 'daily'
+
+    status = get_db_status()
+    if not status["connected"]:
+        return {
+            "connected": False,
+            "error": "MySQL is not connected",
+            "summary": {
+                "total": 0, "num_domains": 0, "positive": 0, "negative": 0, "neutral": 0,
+                "positive_pct": 0, "negative_pct": 0, "neutral_pct": 0, "avg_confidence": 0
+            },
+            "sentiment_trend": {"period": p, "labels": [], "positive": [], "negative": [], "neutral": []},
+            "domain_distribution": [],
+            "top_positive": [],
+            "top_negative": [],
+            "positive_keywords": [],
+            "negative_keywords": []
+        }
+
+    try:
+        summary = db.get_analytics_summary(session_id=session_id, date_from=d_from, date_to=d_to)
+        trend = db.get_sentiment_trend(period=p, session_id=session_id, date_from=d_from, date_to=d_to)
+        domains = db.get_domain_sentiment_analytics(session_id=session_id, date_from=d_from, date_to=d_to, limit=12)
+        top_pos = db.get_top_feedback(sentiment='positive', limit=5, session_id=session_id, date_from=d_from, date_to=d_to)
+        top_neg = db.get_top_feedback(sentiment='negative', limit=5, session_id=session_id, date_from=d_from, date_to=d_to)
+        keywords = db.get_keyword_frequency(session_id=session_id, date_from=d_from, date_to=d_to, limit=10)
+
+        return {
+            "connected": True,
+            "summary": summary,
+            "sentiment_trend": trend,
+            "domain_distribution": domains,
+            "top_positive": top_pos,
+            "top_negative": top_neg,
+            "positive_keywords": keywords.get('positive', []),
+            "negative_keywords": keywords.get('negative', [])
+        }
+    except Exception as error:
+        print(f"[!] Analytics fetch error: {error}")
+        return {
+            "connected": False,
+            "error": str(error),
+            "summary": {
+                "total": 0, "num_domains": 0, "positive": 0, "negative": 0, "neutral": 0,
+                "positive_pct": 0, "negative_pct": 0, "neutral_pct": 0, "avg_confidence": 0
+            },
+            "sentiment_trend": {"period": p, "labels": [], "positive": [], "negative": [], "neutral": []},
+            "domain_distribution": [],
+            "top_positive": [],
+            "top_negative": [],
+            "positive_keywords": [],
+            "negative_keywords": []
+        }
+
+
+@app.route("/analytics")
+def analytics_page():
+    """Renders the Advanced Analytics dashboard page."""
+    status = get_db_status()
+    scope = request.args.get("scope", "all").strip().lower()
+    period = request.args.get("period", "daily").strip().lower()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+
+    if scope not in {"session", "all"}:
+        scope = "all"
+    if period not in {"daily", "weekly", "monthly"}:
+        period = "daily"
+
+    payload = _fetch_analytics_payload(
+        scope=scope,
+        period=period,
+        date_from=date_from,
+        date_to=date_to
+    )
+
+    return render_template(
+        "analytics.html",
+        active_page="analytics",
+        db_status=status,
+        current_scope=scope,
+        current_period=period,
+        date_from=date_from,
+        date_to=date_to,
+        demo_session_id=CURRENT_DEMO_SESSION_ID,
+        analytics=payload,
+        analytics_payload=payload
+    )
+
+
+@app.route("/api/analytics")
+def api_analytics():
+    """Returns structured JSON analytics dataset for API consumers and interactive charts."""
+    scope = request.args.get("scope", "all").strip().lower()
+    period = request.args.get("period", "daily").strip().lower()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+
+    payload = _fetch_analytics_payload(
+        scope=scope,
+        period=period,
+        date_from=date_from,
+        date_to=date_to
+    )
+
+    return jsonify(payload)
+
+
+# ============================================================
+# FEEDBACK INSIGHTS (EXTENSION #9)
+# ============================================================
+
+def _fetch_insights_payload(scope="all", date_from="", date_to="", domain="all", sentiment="all"):
+    """
+    Assembles a complete feedback insights payload from the database:
+    summary KPIs, top positive/negative quotes, NLP keywords, problem categories,
+    domain breakdowns, and factual actionable insights.
+    """
+    session_id = CURRENT_DEMO_SESSION_ID if scope == "session" else None
+    dom_filter = domain if domain and domain.lower() != "all" else None
+    sent_filter = sentiment if sentiment and sentiment.lower() in {"positive", "negative", "neutral"} else None
+
+    try:
+        summary = db.get_insights_summary(
+            session_id=session_id,
+            date_from=date_from,
+            date_to=date_to,
+            domain=dom_filter,
+            sentiment=sent_filter
+        )
+        top_pos = db.get_top_positive_feedback(
+            limit=5,
+            session_id=session_id,
+            date_from=date_from,
+            date_to=date_to,
+            domain=dom_filter
+        )
+        top_neg = db.get_top_negative_feedback(
+            limit=5,
+            session_id=session_id,
+            date_from=date_from,
+            date_to=date_to,
+            domain=dom_filter
+        )
+        kw_data = db.get_nlp_keywords_and_frequent_words(
+            session_id=session_id,
+            date_from=date_from,
+            date_to=date_to,
+            domain=dom_filter,
+            sentiment=sent_filter,
+            limit=10
+        )
+        prob_data = db.get_problem_categories(
+            session_id=session_id,
+            date_from=date_from,
+            date_to=date_to,
+            domain=dom_filter,
+            sentiment=sent_filter
+        )
+        dom_insights = db.get_domain_insights(
+            session_id=session_id,
+            date_from=date_from,
+            date_to=date_to,
+            sentiment=sent_filter,
+            limit=20
+        )
+        actionable = db.generate_actionable_insights(
+            summary=summary,
+            domain_insights=dom_insights,
+            problem_categories=prob_data
+        )
+
+        return {
+            "status": "success",
+            "filters": {
+                "scope": scope,
+                "date_from": date_from,
+                "date_to": date_to,
+                "domain": domain or "all",
+                "sentiment": sentiment or "all",
+                "session_id": session_id
+            },
+            "summary": summary,
+            "top_positive": top_pos,
+            "top_negative": top_neg,
+            "frequent_words": kw_data.get("frequent_words", []),
+            "positive_keywords": kw_data.get("positive_keywords", []),
+            "negative_keywords": kw_data.get("negative_keywords", []),
+            "problem_categories": prob_data.get("categories", []),
+            "domain_insights": dom_insights,
+            "actionable_insights": actionable
+        }
+    except Exception as error:
+        return {
+            "status": "error",
+            "error": str(error),
+            "filters": {
+                "scope": scope,
+                "date_from": date_from,
+                "date_to": date_to,
+                "domain": domain or "all",
+                "sentiment": sentiment or "all",
+                "session_id": session_id
+            },
+            "summary": {
+                "total": 0, "positive": 0, "negative": 0, "neutral": 0,
+                "positive_pct": 0.0, "negative_pct": 0.0, "neutral_pct": 0.0,
+                "average_confidence": 0.0, "most_active_domain": "None",
+                "most_active_domain_count": 0
+            },
+            "top_positive": [],
+            "top_negative": [],
+            "frequent_words": [],
+            "positive_keywords": [],
+            "negative_keywords": [],
+            "problem_categories": [],
+            "domain_insights": [],
+            "actionable_insights": ["Unable to load feedback insights due to database connection error."]
+        }
+
+
+@app.route("/insights")
+def insights_page():
+    """Renders the Feedback Insights dashboard page."""
+    status = get_db_status()
+    scope = request.args.get("scope", "all").strip().lower()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+    domain = request.args.get("domain", "all").strip()
+    sentiment = request.args.get("sentiment", "all").strip().lower()
+
+    if scope not in {"session", "all"}:
+        scope = "all"
+    if sentiment not in {"all", "positive", "negative", "neutral"}:
+        sentiment = "all"
+
+    payload = _fetch_insights_payload(
+        scope=scope,
+        date_from=date_from,
+        date_to=date_to,
+        domain=domain,
+        sentiment=sentiment
+    )
+
+    try:
+        available_domains = db.get_distinct_domains()
+    except Exception:
+        available_domains = []
+
+    return render_template(
+        "insights.html",
+        active_page="insights",
+        db_status=status,
+        current_scope=scope,
+        date_from=date_from,
+        date_to=date_to,
+        current_domain=domain,
+        current_sentiment=sentiment,
+        available_domains=available_domains,
+        demo_session_id=CURRENT_DEMO_SESSION_ID,
+        insights=payload,
+        insights_payload=payload
+    )
+
+
+@app.route("/api/insights")
+def api_insights():
+    """Returns structured JSON feedback insights payload for API consumers and testing."""
+    scope = request.args.get("scope", "all").strip().lower()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+    domain = request.args.get("domain", "all").strip()
+    sentiment = request.args.get("sentiment", "all").strip().lower()
+
+    if scope not in {"session", "all"}:
+        scope = "all"
+    if sentiment not in {"all", "positive", "negative", "neutral"}:
+        sentiment = "all"
+
+    payload = _fetch_insights_payload(
+        scope=scope,
+        date_from=date_from,
+        date_to=date_to,
+        domain=domain,
+        sentiment=sentiment
+    )
+
+    return jsonify(payload)
 
 
 # ============================================================

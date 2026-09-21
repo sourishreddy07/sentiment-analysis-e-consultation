@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block title %}Advanced Analytics & Insights | E-Consultation Sentiment Analysis{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<section class="page-header">
+    <div class="header-split">
+        <div>
+            <h1>Advanced Consultation Analytics</h1>
+            <p class="subtitle">Empirical sentiment timeline trends, domain distributions, confidence analysis, and natural language keyword insights.</p>
+        </div>
+        <div class="scope-toggle-group">
+            <span class="scope-label">Scope:</span>
+            <a href="{{ url_for('analytics_page', scope='session', period=current_period, date_from=date_from, date_to=date_to) }}" 
+               class="scope-btn {% if current_scope == 'session' %}active{% endif %}">
+               Demo Session
+            </a>
+            <a href="{{ url_for('analytics_page', scope='all', period=current_period, date_from=date_from, date_to=date_to) }}" 
+               class="scope-btn {% if current_scope == 'all' %}active{% endif %}">
+               All History
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Filter Toolbar -->
+<div class="card filter-card">
+    <form method="GET" action="{{ url_for('analytics_page') }}" class="analytics-filter-form">
+        <input type="hidden" name="scope" value="{{ current_scope }}">
+        
+        <div class="filter-controls-row">
+            <!-- Time Period Aggregation -->
+            <div class="form-group period-group">
+                <label for="periodSelect">Aggregation Period:</label>
+                <div class="period-pill-group">
+                    <label class="period-pill {% if current_period == 'daily' %}active{% endif %}">
+                        <input type="radio" name="period" value="daily" {% if current_period == 'daily' %}checked{% endif %} onchange="this.form.submit()"> Daily
+                    </label>
+                    <label class="period-pill {% if current_period == 'weekly' %}active{% endif %}">
+                        <input type="radio" name="period" value="weekly" {% if current_period == 'weekly' %}checked{% endif %} onchange="this.form.submit()"> Weekly
+                    </label>
+                    <label class="period-pill {% if current_period == 'monthly' %}active{% endif %}">
+                        <input type="radio" name="period" value="monthly" {% if current_period == 'monthly' %}checked{% endif %} onchange="this.form.submit()"> Monthly
+                    </label>
+                </div>
+            </div>
+
+            <!-- Date From -->
+            <div class="form-group date-group">
+                <label for="date_from">From Date:</label>
+                <input type="date" id="date_from" name="date_from" value="{{ date_from }}" class="form-control">
+            </div>
+
+            <!-- Date To -->
+            <div class="form-group date-group">
+                <label for="date_to">To Date:</label>
+                <input type="date" id="date_to" name="date_to" value="{{ date_to }}" class="form-control">
+            </div>
+
+            <!-- Actions -->
+            <div class="form-group action-group">
+                <button type="submit" class="btn btn-primary btn-sm">Apply Filters</button>
+                <a href="{{ url_for('analytics_page', scope=current_scope) }}" class="btn btn-ghost btn-sm">Clear Filters</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Primary Analytics KPI Cards -->
+<section class="kpi-grid analytics-kpi-grid">
+    <div class="kpi-card total">
+        <div class="kpi-icon">📊</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Comments Analyzed</span>
+            <span class="kpi-value">{{ analytics.summary.total }}</span>
+            <span class="kpi-subtext">{% if current_scope == 'session' %}Active Session{% else %}Persistent Database History{% endif %}</span>
+        </div>
+    </div>
+    
+    <div class="kpi-card positive">
+        <div class="kpi-icon">👍</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Positive Feedback</span>
+            <span class="kpi-value">{{ analytics.summary.positive }}</span>
+            <span class="kpi-subtext">{{ analytics.summary.positive_pct }}% of total</span>
+        </div>
+    </div>
+
+    <div class="kpi-card negative">
+        <div class="kpi-icon">👎</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Negative Feedback</span>
+            <span class="kpi-value">{{ analytics.summary.negative }}</span>
+            <span class="kpi-subtext">{{ analytics.summary.negative_pct }}% of total</span>
+        </div>
+    </div>
+
+    <div class="kpi-card neutral">
+        <div class="kpi-icon">⚖️</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Neutral Feedback</span>
+            <span class="kpi-value">{{ analytics.summary.neutral }}</span>
+            <span class="kpi-subtext">{{ analytics.summary.neutral_pct }}% of total</span>
+        </div>
+    </div>
+
+    <div class="kpi-card highlight-confidence">
+        <div class="kpi-icon">🎯</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Average ML Confidence</span>
+            <span class="kpi-value">{{ analytics.summary.avg_confidence }}%</span>
+            <span class="kpi-subtext">Calibrated certainty across records</span>
+        </div>
+    </div>
+
+    <div class="kpi-card domains-card">
+        <div class="kpi-icon">🏥</div>
+        <div class="kpi-details">
+            <span class="kpi-title">Consultation Domains</span>
+            <span class="kpi-value">{{ analytics.summary.num_domains }}</span>
+            <span class="kpi-subtext">Specialties represented</span>
+        </div>
+    </div>
+</section>
+
+{% if analytics.summary.total == 0 %}
+<!-- Empty State -->
+<div class="card empty-analytics-card">
+    <div class="empty-analytics-content">
+        <div class="empty-analytics-icon">📈</div>
+        <h2>No analytics data available yet.</h2>
+        <p class="empty-analytics-sub">
+            {% if current_scope == 'session' %}
+                The active demo session has no comments recorded yet. Submit comments through the live tester or switch to <strong>All History</strong> to view persistent analytics.
+            {% else %}
+                No comments match your current date range filter. Try clearing or expanding your date range.
+            {% endif %}
+        </p>
+        <div class="empty-analytics-actions">
+            {% if current_scope == 'session' %}
+                <a href="{{ url_for('analytics_page', scope='all') }}" class="btn btn-primary">Switch to All History</a>
+                <a href="{{ url_for('index') }}" class="btn btn-outline">Go to Live Comment Tester</a>
+            {% else %}
+                <a href="{{ url_for('analytics_page', scope='all') }}" class="btn btn-primary">Clear Date Filters</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% else %}
+
+<!-- Visual Charts Row -->
+<div class="analytics-charts-grid">
+    <!-- Chart 1: Sentiment Trend Over Time -->
+    <div class="card chart-card">
+        <div class="card-header-split">
+            <div>
+                <h3>Sentiment Trend Over Time</h3>
+                <p class="card-sub">{{ current_period|capitalize }} progression of Positive, Negative, and Neutral consultation feedback.</p>
+            </div>
+            <span class="badge badge-neutral">{{ current_period|capitalize }} View</span>
+        </div>
+        <div class="chart-wrapper-analytics">
+            <canvas id="sentimentTrendChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Chart 2: Domain-wise Sentiment Comparison -->
+    <div class="card chart-card">
+        <div class="card-header-split">
+            <div>
+                <h3>Domain-wise Sentiment Distribution</h3>
+                <p class="card-sub">Comparative feedback breakdown across top consultation domains.</p>
+            </div>
+            <span class="badge badge-positive">Top Domains</span>
+        </div>
+        <div class="chart-wrapper-analytics">
+            <canvas id="domainAnalyticsChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Deep Insights: Top Comments Row -->
+<div class="analytics-details-grid">
+    <!-- Top Positive Feedback -->
+    <div class="card feedback-rank-card positive-border">
+        <div class="feedback-card-header">
+            <div>
+                <h3>🏆 Top Positive Feedback</h3>
+                <p class="card-sub">Highest-confidence positive consultation experiences.</p>
+            </div>
+            <span class="badge badge-positive">Positive</span>
+        </div>
+        <div class="feedback-list">
+            {% if analytics.top_positive %}
+                {% for item in analytics.top_positive %}
+                    <div class="feedback-item">
+                        <div class="feedback-meta">
+                            <span class="domain-tag">{{ item.domain }}</span>
+                            <span class="confidence-pill pos">{{ (item.confidence * 100)|round(1) }}% Confidence</span>
+                            <span class="feedback-date">{{ item.created_at_str[:10] if item.created_at_str else '' }}</span>
+                        </div>
+                        <p class="feedback-text">"{{ item.comment_text }}"</p>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">No positive comments recorded in this scope.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Top Negative Feedback -->
+    <div class="card feedback-rank-card negative-border">
+        <div class="feedback-card-header">
+            <div>
+                <h3>⚠️ Top Negative Feedback</h3>
+                <p class="card-sub">Highest-confidence areas requiring clinical or technical attention.</p>
+            </div>
+            <span class="badge badge-negative">Negative</span>
+        </div>
+        <div class="feedback-list">
+            {% if analytics.top_negative %}
+                {% for item in analytics.top_negative %}
+                    <div class="feedback-item">
+                        <div class="feedback-meta">
+                            <span class="domain-tag">{{ item.domain }}</span>
+                            <span class="confidence-pill neg">{{ (item.confidence * 100)|round(1) }}% Confidence</span>
+                            <span class="feedback-date">{{ item.created_at_str[:10] if item.created_at_str else '' }}</span>
+                        </div>
+                        <p class="feedback-text">"{{ item.comment_text }}"</p>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">No negative comments recorded in this scope.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Frequent Keywords Row -->
+<div class="analytics-keywords-grid">
+    <!-- Positive Keywords -->
+    <div class="card keywords-card">
+        <div class="card-header-split">
+            <div>
+                <h3>🌿 Common Positive Keywords</h3>
+                <p class="card-sub">Most frequent natural language terms in positive comments.</p>
+            </div>
+            <span class="badge badge-positive">NLTK Extracted</span>
+        </div>
+        <div class="keyword-cloud">
+            {% if analytics.positive_keywords %}
+                {% for kw in analytics.positive_keywords %}
+                    <div class="keyword-chip pos-chip">
+                        <span class="keyword-name">{{ kw.word }}</span>
+                        <span class="keyword-count">{{ kw.count }}</span>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">Insufficient positive feedback for keyword extraction.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Negative Keywords -->
+    <div class="card keywords-card">
+        <div class="card-header-split">
+            <div>
+                <h3>🔍 Common Negative Keywords</h3>
+                <p class="card-sub">Most frequent natural language terms in negative comments.</p>
+            </div>
+            <span class="badge badge-negative">NLTK Extracted</span>
+        </div>
+        <div class="keyword-cloud">
+            {% if analytics.negative_keywords %}
+                {% for kw in analytics.negative_keywords %}
+                    <div class="keyword-chip neg-chip">
+                        <span class="keyword-name">{{ kw.word }}</span>
+                        <span class="keyword-count">{{ kw.count }}</span>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="text-muted">Insufficient negative feedback for keyword extraction.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- JSON Data Island for Safe Chart.js Initialization -->
+<script id="analytics-payload-data" type="application/json">{{ analytics_payload | tojson | safe }}</script>
+<script src="{{ url_for('static', filename='js/analytics.js') }}"></script>
+{% endblock %}

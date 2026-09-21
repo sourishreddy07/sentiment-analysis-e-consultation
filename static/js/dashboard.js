@@ -148,8 +148,121 @@ function displayPredictionResult(data) {
         vaderNeu.textContent = data.vader.neutral;
     }
 
+    // Model Explainability (Extension #10)
+    renderExplainabilitySection(data.explanation);
+
     card.style.display = 'block';
     card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Render Explainability Section
+function renderExplainabilitySection(exp) {
+    const section = document.getElementById('explainabilitySection');
+    if (!section) return;
+
+    if (!exp) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+
+    const summaryText = document.getElementById('explainSummaryText');
+    const mlBadge = document.getElementById('explainMlBadge');
+    const vaderBadge = document.getElementById('explainVaderBadge');
+    const agreeBadge = document.getElementById('explainAgreementBadge');
+    const posChips = document.getElementById('posContribChips');
+    const negChips = document.getElementById('negContribChips');
+    const tbody = document.getElementById('explainFeaturesTbody');
+
+    if (summaryText) summaryText.textContent = exp.summary || 'No explanatory features found.';
+
+    if (mlBadge) {
+        const mlSent = (exp.predicted_sentiment || 'neutral').toLowerCase();
+        mlBadge.className = `sentiment-badge badge-sm ${mlSent}`;
+        mlBadge.textContent = mlSent.toUpperCase();
+    }
+
+    if (vaderBadge) {
+        const vSent = (exp.vader_sentiment || 'neutral').toLowerCase();
+        vaderBadge.className = `sentiment-badge badge-sm ${vSent}`;
+        vaderBadge.textContent = vSent.toUpperCase();
+    }
+
+    if (agreeBadge) {
+        if (exp.agreement) {
+            agreeBadge.className = 'agreement-badge agree-yes';
+            agreeBadge.textContent = '✓ Agree';
+        } else {
+            agreeBadge.className = 'agreement-badge agree-no';
+            agreeBadge.textContent = '≠ Diverge';
+        }
+    }
+
+    // Positive chips
+    if (posChips) {
+        posChips.innerHTML = '';
+        const pFeats = exp.positive_features || [];
+        if (pFeats.length === 0) {
+            posChips.innerHTML = '<span class="no-feats-note">None identified</span>';
+        } else {
+            pFeats.forEach(f => {
+                const chip = document.createElement('span');
+                chip.className = 'contrib-chip chip-pos';
+                chip.innerHTML = `<strong>${escapeHtml(f.word)}</strong> <span class="chip-score">+${f.contribution.toFixed(2)}</span>`;
+                posChips.appendChild(chip);
+            });
+        }
+    }
+
+    // Negative chips
+    if (negChips) {
+        negChips.innerHTML = '';
+        const nFeats = exp.negative_features || [];
+        if (nFeats.length === 0) {
+            negChips.innerHTML = '<span class="no-feats-note">None identified</span>';
+        } else {
+            nFeats.forEach(f => {
+                const chip = document.createElement('span');
+                chip.className = 'contrib-chip chip-neg';
+                chip.innerHTML = `<strong>${escapeHtml(f.word)}</strong> <span class="chip-score">${f.contribution.toFixed(2)}</span>`;
+                negChips.appendChild(chip);
+            });
+        }
+    }
+
+    // Features table
+    if (tbody) {
+        tbody.innerHTML = '';
+        const topFeats = exp.top_features || [];
+        if (topFeats.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted" style="padding: 0.75rem;">No non-zero TF-IDF vocabulary features matched this comment.</td></tr>';
+        } else {
+            topFeats.forEach(f => {
+                const tr = document.createElement('tr');
+                const isPos = f.direction === 'positive';
+                tr.innerHTML = `
+                    <td class="font-semibold">${escapeHtml(f.word)}</td>
+                    <td class="text-right font-mono">${f.tfidf.toFixed(4)}</td>
+                    <td class="text-right font-mono">${f.weight > 0 ? '+' : ''}${f.weight.toFixed(4)}</td>
+                    <td class="text-right font-mono ${isPos ? 'text-positive' : 'text-negative'} font-bold">
+                        ${f.contribution > 0 ? '+' : ''}${f.contribution.toFixed(4)}
+                    </td>
+                    <td>
+                        <span class="pill-pct ${isPos ? 'pill-positive' : 'pill-negative'}">
+                            ${isPos ? 'Positive' : 'Negative'}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // Update KPI DOM counts

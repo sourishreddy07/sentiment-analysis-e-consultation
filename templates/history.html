@@ -127,7 +127,10 @@
                             <span class="vader-chip">{{ item.vader_sentiment|capitalize if item.vader_sentiment else '-' }} ({{ item.vader_compound }})</span>
                         </td>
                         <td class="time-cell">{{ item.created_at }}</td>
-                        <td>
+                        <td class="action-cell">
+                            <button type="button" class="btn-explain-sm" data-id="{{ item.id }}" data-comment="{{ item.comment_text | e }}" title="Explain ML feature contributions">
+                                🔍 Explain
+                            </button>
                             <form action="{{ url_for('delete_record', record_id=item.id) }}" method="POST" onsubmit="return confirm('Delete this comment record?');" style="display:inline;">
                                 <button type="submit" class="btn-delete" title="Delete record">🗑️</button>
                             </form>
@@ -176,4 +179,229 @@
     </div>
 </div>
 {% endif %}
+
+<!-- Model Explainability Modal (Extension #10) -->
+<div id="historyExplainModal" class="explain-modal-backdrop" style="display: none;">
+    <div class="explain-modal-card">
+        <div class="explain-modal-header">
+            <div>
+                <h3 class="modal-title">🔍 Prediction Feature Explanation</h3>
+                <span class="modal-subtitle">TF-IDF feature contribution-based explanation for the trained sentiment classifier</span>
+            </div>
+            <button type="button" id="closeExplainModal" class="btn-modal-close" title="Close">✕</button>
+        </div>
+        <div class="explain-modal-body">
+            <!-- Comment Quote -->
+            <div class="modal-quote-box">
+                <span class="modal-quote-label">Evaluated Feedback:</span>
+                <p id="modalCommentText" class="modal-quote-text"></p>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="modalLoading" class="modal-loading-state" style="display: none;">
+                <span class="spinner-icon">⏳</span> Computing TF-IDF feature contributions...
+            </div>
+
+            <!-- Results Container -->
+            <div id="modalContent" style="display: none;">
+                <!-- Summary Callout -->
+                <div class="explain-summary-callout">
+                    <p id="modalSummaryText" class="explain-summary-text"></p>
+                </div>
+
+                <!-- Comparison Row -->
+                <div class="explain-comparison-row">
+                    <div class="comparison-pill-box">
+                        <span class="comp-label">ML Prediction:</span>
+                        <span id="modalMlBadge" class="sentiment-badge badge-sm"></span>
+                    </div>
+                    <div class="comparison-pill-box">
+                        <span class="comp-label">ML Confidence:</span>
+                        <span id="modalConfBadge" class="confidence-tag"></span>
+                    </div>
+                    <div class="comparison-pill-box">
+                        <span class="comp-label">VADER Baseline:</span>
+                        <span id="modalVaderBadge" class="sentiment-badge badge-sm"></span>
+                    </div>
+                    <div class="comparison-pill-box">
+                        <span class="comp-label">Baseline Agreement:</span>
+                        <span id="modalAgreeBadge" class="agreement-badge"></span>
+                    </div>
+                </div>
+
+                <!-- Contribution Panels -->
+                <div class="contribution-chips-grid">
+                    <div class="contrib-panel contrib-panel-pos">
+                        <div class="contrib-panel-title">
+                            <span class="indicator-pos">▲</span> Words Supporting Positive Sentiment
+                        </div>
+                        <div id="modalPosChips" class="chips-flex"></div>
+                    </div>
+                    <div class="contrib-panel contrib-panel-neg">
+                        <div class="contrib-panel-title">
+                            <span class="indicator-neg">▼</span> Words Supporting Negative Sentiment
+                        </div>
+                        <div id="modalNegChips" class="chips-flex"></div>
+                    </div>
+                </div>
+
+                <!-- Features Table -->
+                <div class="features-table-container">
+                    <div class="features-table-header">
+                        <strong>Top Contributing Features (TF-IDF × Model Coefficient):</strong>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="feature-contrib-table">
+                            <thead>
+                                <tr>
+                                    <th>Word / Feature</th>
+                                    <th class="text-right">TF-IDF</th>
+                                    <th class="text-right">Model Weight</th>
+                                    <th class="text-right">Contribution</th>
+                                    <th>Direction</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modalFeaturesTbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('historyExplainModal');
+    const closeBtn = document.getElementById('closeExplainModal');
+    const commentEl = document.getElementById('modalCommentText');
+    const loadingEl = document.getElementById('modalLoading');
+    const contentEl = document.getElementById('modalContent');
+
+    if (!modal) return;
+
+    function closeModal() {
+        modal.style.display = 'none';
+    }
+
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', function (e) {
+        if (e.target === modal) closeModal();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && modal.style.display !== 'none') closeModal();
+    });
+
+    document.querySelectorAll('.btn-explain-sm').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const comment = btn.getAttribute('data-comment');
+            if (!comment) return;
+
+            commentEl.textContent = '“' + comment + '”';
+            loadingEl.style.display = 'block';
+            contentEl.style.display = 'none';
+            modal.style.display = 'flex';
+
+            fetch('/api/explain', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ comment: comment })
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                loadingEl.style.display = 'none';
+                if (!data.success || !data.explanation) {
+                    alert('Error: ' + (data.error || 'Failed to explain prediction'));
+                    closeModal();
+                    return;
+                }
+                renderModalExplanation(data.explanation, data.prediction);
+                contentEl.style.display = 'block';
+            })
+            .catch(function () {
+                loadingEl.style.display = 'none';
+                alert('Network error while requesting explanation.');
+                closeModal();
+            });
+        });
+    });
+
+    function renderModalExplanation(exp, pred) {
+        document.getElementById('modalSummaryText').textContent = exp.summary || 'No explanation available.';
+        const mlSent = (exp.predicted_sentiment || 'neutral').toLowerCase();
+        const mlBadge = document.getElementById('modalMlBadge');
+        mlBadge.className = 'sentiment-badge badge-sm ' + mlSent;
+        mlBadge.textContent = mlSent.toUpperCase();
+
+        const confScore = Math.round((exp.confidence || 0) * 100);
+        document.getElementById('modalConfBadge').textContent = confScore + '% Conf';
+
+        const vSent = (exp.vader_sentiment || 'neutral').toLowerCase();
+        const vBadge = document.getElementById('modalVaderBadge');
+        vBadge.className = 'sentiment-badge badge-sm ' + vSent;
+        vBadge.textContent = vSent.toUpperCase();
+
+        const agreeBadge = document.getElementById('modalAgreeBadge');
+        if (exp.agreement) {
+            agreeBadge.className = 'agreement-badge agree-yes';
+            agreeBadge.textContent = '✓ Agree';
+        } else {
+            agreeBadge.className = 'agreement-badge agree-no';
+            agreeBadge.textContent = '≠ Diverge';
+        }
+
+        const posChips = document.getElementById('modalPosChips');
+        posChips.innerHTML = '';
+        const pFeats = exp.positive_features || [];
+        if (pFeats.length === 0) {
+            posChips.innerHTML = '<span class="no-feats-note">None identified</span>';
+        } else {
+            pFeats.forEach(function (f) {
+                const chip = document.createElement('span');
+                chip.className = 'contrib-chip chip-pos';
+                chip.innerHTML = '<strong>' + escapeHtml(f.word) + '</strong> <span class="chip-score">+' + f.contribution.toFixed(2) + '</span>';
+                posChips.appendChild(chip);
+            });
+        }
+
+        const negChips = document.getElementById('modalNegChips');
+        negChips.innerHTML = '';
+        const nFeats = exp.negative_features || [];
+        if (nFeats.length === 0) {
+            negChips.innerHTML = '<span class="no-feats-note">None identified</span>';
+        } else {
+            nFeats.forEach(function (f) {
+                const chip = document.createElement('span');
+                chip.className = 'contrib-chip chip-neg';
+                chip.innerHTML = '<strong>' + escapeHtml(f.word) + '</strong> <span class="chip-score">' + f.contribution.toFixed(2) + '</span>';
+                negChips.appendChild(chip);
+            });
+        }
+
+        const tbody = document.getElementById('modalFeaturesTbody');
+        tbody.innerHTML = '';
+        const topFeats = exp.top_features || [];
+        if (topFeats.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted" style="padding: 0.75rem;">No non-zero TF-IDF vocabulary features matched this comment.</td></tr>';
+        } else {
+            topFeats.forEach(function (f) {
+                const tr = document.createElement('tr');
+                const isPos = f.direction === 'positive';
+                tr.innerHTML = '<td class="font-semibold">' + escapeHtml(f.word) + '</td>' +
+                    '<td class="text-right font-mono">' + f.tfidf.toFixed(4) + '</td>' +
+                    '<td class="text-right font-mono">' + (f.weight > 0 ? '+' : '') + f.weight.toFixed(4) + '</td>' +
+                    '<td class="text-right font-mono ' + (isPos ? 'text-positive' : 'text-negative') + ' font-bold">' + (f.contribution > 0 ? '+' : '') + f.contribution.toFixed(4) + '</td>' +
+                    '<td><span class="pill-pct ' + (isPos ? 'pill-positive' : 'pill-negative') + '">' + (isPos ? 'Positive' : 'Negative') + '</span></td>';
+                tbody.appendChild(tr);
+            });
+        }
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+});
+</script>
 {% endblock %}

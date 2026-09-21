@@ -154,6 +154,76 @@
                     <div class="neutral-note">
                         <small>ℹ️ <em>Note: The ML model is trained on ground-truth Positive and Negative classes. "Neutral" classifications represent borderline comments whose prediction confidence falls within the uncertainty window (45% - 55%).</em></small>
                     </div>
+
+                    <!-- Model Explainability Section (Extension #10) -->
+                    <div id="explainabilitySection" class="explainability-box">
+                        <div class="explainability-header">
+                            <div class="explainability-title-group">
+                                <h4 class="explainability-title">
+                                    <span class="explain-icon">🔍</span> Why was this prediction made?
+                                </h4>
+                                <span class="explain-subtitle">TF-IDF feature contribution-based explanation for the trained sentiment classifier</span>
+                            </div>
+                        </div>
+
+                        <!-- Factual Summary Statement -->
+                        <div class="explain-summary-callout">
+                            <p id="explainSummaryText" class="explain-summary-text"></p>
+                        </div>
+
+                        <!-- ML vs VADER Comparison -->
+                        <div class="explain-comparison-row">
+                            <div class="comparison-pill-box">
+                                <span class="comp-label">ML Prediction:</span>
+                                <span id="explainMlBadge" class="sentiment-badge badge-sm"></span>
+                            </div>
+                            <div class="comparison-pill-box">
+                                <span class="comp-label">VADER Baseline:</span>
+                                <span id="explainVaderBadge" class="sentiment-badge badge-sm"></span>
+                            </div>
+                            <div class="comparison-pill-box">
+                                <span class="comp-label">Baseline Agreement:</span>
+                                <span id="explainAgreementBadge" class="agreement-badge"></span>
+                            </div>
+                        </div>
+
+                        <!-- Positive vs Negative Feature Chips -->
+                        <div class="contribution-chips-grid">
+                            <div class="contrib-panel contrib-panel-pos">
+                                <div class="contrib-panel-title">
+                                    <span class="indicator-pos">▲</span> Words Supporting Positive Sentiment
+                                </div>
+                                <div id="posContribChips" class="chips-flex"></div>
+                            </div>
+                            <div class="contrib-panel contrib-panel-neg">
+                                <div class="contrib-panel-title">
+                                    <span class="indicator-neg">▼</span> Words Supporting Negative Sentiment
+                                </div>
+                                <div id="negContribChips" class="chips-flex"></div>
+                            </div>
+                        </div>
+
+                        <!-- Top Features Contribution Table -->
+                        <div class="features-table-container">
+                            <div class="features-table-header">
+                                <strong>Top Contributing Features (TF-IDF × Model Coefficient):</strong>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="feature-contrib-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Word / Feature</th>
+                                            <th class="text-right">TF-IDF</th>
+                                            <th class="text-right">Model Weight</th>
+                                            <th class="text-right">Contribution</th>
+                                            <th>Direction</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="explainFeaturesTbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
