@@ -275,10 +275,13 @@
     </div>
 </div>
 
-<!-- Chart.js Script -->
+<!-- Chart.js Data Island & Initialization -->
+<script id="chart-payload-data" type="application/json">{{ chart_payload | tojson | safe }}</script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const chartPayload = {{ chart_payload | tojson }};
+    const payloadElement = document.getElementById('chart-payload-data');
+    if (!payloadElement) return;
+    const chartPayload = JSON.parse(payloadElement.textContent || '{}');
     const ctx = document.getElementById('modelComparisonChart');
 
     if (ctx && chartPayload && chartPayload.labels) {
