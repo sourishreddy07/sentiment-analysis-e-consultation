@@ -144,6 +144,10 @@ def train_and_evaluate():
         'best_model': best_model_name,
         'best_f1': round(best_f1 * 100, 2),
         'dataset_total': len(df),
+        'training_samples': len(X_train),
+        'test_samples': len(X_test),
+        'num_classes': len(df['sentiment_label'].unique()),
+        'classes': sorted(df['sentiment_label'].unique().tolist()),
         'class_distribution': df['sentiment_label'].value_counts().to_dict(),
         'models_comparison': results
     }

@@ -92,6 +92,7 @@
                             <option value="dermatology">Dermatology</option>
                             <option value="chronic_care">Chronic Care</option>
                             <option value="rehab">Rehabilitation</option>
+                            <option value="privacy">Privacy & Data Security</option>
                         </select>
                     </div>
                     <div class="form-group half action-group">
@@ -178,9 +179,19 @@
 
             <!-- Chart 2: Domain Breakdown -->
             <div id="tab-domains" class="tab-content">
-                <div class="chart-container">
+                <div class="domain-header-bar">
+                    <h3 class="domain-section-title">Consultation Domain Analysis</h3>
+                    <p class="domain-section-subtitle">Real-time sentiment breakdown across consultation domains for the active demo session.</p>
+                </div>
+                <div id="domainEmptyState" class="empty-chart-state" style="display: none;">
+                    <div class="empty-chart-icon">📊</div>
+                    <p class="empty-chart-title">No consultation data available yet.</p>
+                    <p class="empty-chart-sub">Submit a comment above or upload a CSV dataset to view domain analytics.</p>
+                </div>
+                <div id="domainChartContainer" class="chart-container">
                     <canvas id="domainChart"></canvas>
                 </div>
+                <div id="domainMetricsContainer" class="domain-metrics-grid"></div>
             </div>
 
             <!-- Chart 3: Model Benchmarks -->

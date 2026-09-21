@@ -209,31 +209,84 @@ def insert_bulk_comments(records):
         conn.close()
 
 
-def get_all_comments(limit=200, search_keyword=None, sentiment_filter=None, session_id=None):
-    """Fetches stored comments with optional keyword, sentiment, and session filtering."""
+def get_distinct_domains():
+    """Returns a sorted list of unique domain strings from the comments table."""
     conn = get_connection(use_database=True)
     try:
         with conn.cursor() as cursor:
-            query = "SELECT * FROM comments WHERE 1=1"
+            cursor.execute(
+                "SELECT DISTINCT domain FROM comments "
+                "WHERE domain IS NOT NULL AND domain != '' "
+                "ORDER BY domain ASC"
+            )
+            rows = cursor.fetchall()
+            return [r['domain'] for r in rows if r.get('domain')]
+    finally:
+        conn.close()
+
+
+def get_all_comments(
+    limit=25,
+    offset=0,
+    search_keyword=None,
+    sentiment_filter=None,
+    domain_filter=None,
+    date_from=None,
+    date_to=None,
+    session_id=None,
+    return_total=False
+):
+    """
+    Fetches stored comments with optional keyword, sentiment, domain, date, and session filtering.
+    Supports pagination via limit & offset, and optionally returns (records, total_count).
+    """
+    conn = get_connection(use_database=True)
+    try:
+        with conn.cursor() as cursor:
+            where_conditions = ["1=1"]
             params = []
             
             if session_id:
-                query += " AND demo_session_id = %s"
+                where_conditions.append("demo_session_id = %s")
                 params.append(session_id)
                 
             if search_keyword:
-                query += " AND comment_text LIKE %s"
+                where_conditions.append("comment_text LIKE %s")
                 params.append(f"%{search_keyword}%")
                 
             if sentiment_filter and sentiment_filter.lower() != 'all':
-                query += " AND sentiment = %s"
+                where_conditions.append("sentiment = %s")
                 params.append(sentiment_filter.lower())
                 
-            query += " ORDER BY created_at DESC LIMIT %s"
-            params.append(int(limit))
-            
-            cursor.execute(query, params)
-            return cursor.fetchall()
+            if domain_filter and domain_filter.lower() != 'all':
+                where_conditions.append("domain = %s")
+                params.append(domain_filter)
+
+            if date_from:
+                where_conditions.append("created_at >= %s")
+                params.append(f"{date_from} 00:00:00")
+
+            if date_to:
+                where_conditions.append("created_at <= %s")
+                params.append(f"{date_to} 23:59:59")
+
+            where_sql = " WHERE " + " AND ".join(where_conditions)
+
+            total_count = 0
+            if return_total:
+                count_query = f"SELECT COUNT(*) AS total FROM comments{where_sql}"
+                cursor.execute(count_query, params)
+                count_row = cursor.fetchone()
+                total_count = count_row['total'] if count_row else 0
+
+            data_query = f"SELECT * FROM comments{where_sql} ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s"
+            data_params = list(params) + [int(limit), int(offset)]
+            cursor.execute(data_query, data_params)
+            records = cursor.fetchall()
+
+            if return_total:
+                return records, total_count
+            return records
     finally:
         conn.close()
 
@@ -276,7 +329,31 @@ def get_dashboard_stats(session_id=None):
         pos = sentiment_counts['positive']
         neg = sentiment_counts['negative']
         neu = sentiment_counts['neutral']
-        
+
+        # Structured domain-wise sentiment distribution
+        # [{"domain": "general", "positive": 2, "negative": 1, "neutral": 0, "total": 3}, ...]
+        domain_map = {}
+        for row in domain_rows:
+            dom = (row['domain'] or 'general').strip()
+            if dom not in domain_map:
+                domain_map[dom] = {
+                    'domain': dom,
+                    'positive': 0,
+                    'negative': 0,
+                    'neutral': 0,
+                    'total': 0
+                }
+            s = (row['sentiment'] or '').strip().lower()
+            cnt = int(row['count'])
+            if s in ('positive', 'negative', 'neutral'):
+                domain_map[dom][s] += cnt
+                domain_map[dom]['total'] += cnt
+
+        domain_distribution = sorted(
+            domain_map.values(),
+            key=lambda x: (-x['total'], x['domain'])
+        )
+
         stats = {
             'total': total,
             'positive': pos,
@@ -285,7 +362,7 @@ def get_dashboard_stats(session_id=None):
             'positive_pct': round((pos / total * 100), 1) if total > 0 else 0,
             'negative_pct': round((neg / total * 100), 1) if total > 0 else 0,
             'neutral_pct': round((neu / total * 100), 1) if total > 0 else 0,
-            'domain_distribution': domain_rows,
+            'domain_distribution': domain_distribution,
             'recent_comments': recent_comments,
             'session_id': session_id
         }

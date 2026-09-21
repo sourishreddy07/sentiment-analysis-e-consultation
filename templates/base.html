@@ -25,6 +25,7 @@
                 <a href="{{ url_for('index') }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
                 <a href="{{ url_for('bulk_page') }}" class="nav-link {% if active_page == 'bulk' %}active{% endif %}">Bulk CSV Analysis</a>
                 <a href="{{ url_for('history_page') }}" class="nav-link {% if active_page == 'history' %}active{% endif %}">History & Records</a>
+                <a href="{{ url_for('model_performance_page') }}" class="nav-link {% if active_page == 'performance' %}active{% endif %}">Model Performance</a>
             </nav>
             <div class="nav-badge">
                 <span class="status-dot"></span>

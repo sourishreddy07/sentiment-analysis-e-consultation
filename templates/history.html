@@ -1,65 +1,117 @@
 {% extends "base.html" %}
 
-{% block title %}History & Records | E-Consultation Sentiment Analysis{% endblock %}
+{% block title %}Prediction History & Records | E-Consultation Sentiment Analysis{% endblock %}
 
 {% block content %}
 <section class="page-header">
     <div class="header-split">
         <div>
-            <h1>Prediction Records & History</h1>
-            <p class="subtitle">Search, filter, and inspect all e-consultation comments stored in the MySQL database.</p>
+            <h1>Prediction History & Records</h1>
+            <p class="subtitle">Search, filter, and inspect e-consultation feedback comments analyzed with ML models.</p>
         </div>
         <div class="header-actions">
-            <a href="{{ url_for('export_csv') }}" class="btn btn-outline">📥 Export to CSV</a>
+            <a href="{{ url_for('export_csv', search=search_keyword, sentiment=current_sentiment, domain=current_domain, date_from=date_from, date_to=date_to, scope=current_scope) }}" class="btn btn-outline" id="btnExportCsv">📥 Export to CSV</a>
         </div>
     </div>
 </section>
 
-<!-- Filter Toolbar -->
-<div class="filter-toolbar">
-    <form method="GET" action="{{ url_for('history_page') }}" class="filter-form">
-        <div class="filter-group search-box">
-            <input type="text" name="search" placeholder="Search comments by keyword..." value="{{ search_keyword or '' }}">
-        </div>
-        <div class="filter-group">
-            <select name="scope" onchange="this.form.submit()">
-                <option value="all" {% if current_scope != 'session' %}selected{% endif %}>Scope: All Database Records</option>
-                <option value="session" {% if current_scope == 'session' %}selected{% endif %}>Scope: Current Demo Session Only</option>
-            </select>
-        </div>
-        <div class="filter-group">
-            <select name="sentiment" onchange="this.form.submit()">
-                <option value="all" {% if current_sentiment == 'all' %}selected{% endif %}>All Sentiments</option>
-                <option value="positive" {% if current_sentiment == 'positive' %}selected{% endif %}>Positive Only</option>
-                <option value="negative" {% if current_sentiment == 'negative' %}selected{% endif %}>Negative Only</option>
-                <option value="neutral" {% if current_sentiment == 'neutral' %}selected{% endif %}>Neutral Only</option>
-            </select>
-        </div>
-        <button type="submit" class="btn btn-primary">Filter</button>
-        {% if search_keyword or current_sentiment != 'all' or current_scope == 'session' %}
-            <a href="{{ url_for('history_page') }}" class="btn btn-ghost">Reset</a>
+<!-- Scope Selector Tabs: Current Session vs All History -->
+<div class="scope-toggle-container">
+    <div class="scope-toggle-tabs">
+        <a href="{{ url_for('history_page', scope='session', search=search_keyword, sentiment=current_sentiment, domain=current_domain, date_from=date_from, date_to=date_to) }}" 
+           class="scope-tab {% if current_scope == 'session' %}active{% endif %}" id="tabCurrentSession">
+            Current Session
+        </a>
+        <a href="{{ url_for('history_page', scope='all', search=search_keyword, sentiment=current_sentiment, domain=current_domain, date_from=date_from, date_to=date_to) }}" 
+           class="scope-tab {% if current_scope != 'session' %}active{% endif %}" id="tabAllHistory">
+            All History
+        </a>
+    </div>
+    <div class="scope-badge-info">
+        {% if current_scope == 'session' %}
+            <span class="session-badge">Session: <code>{{ demo_session_id }}</code></span>
+        {% else %}
+            <span class="session-badge-all">Persistent Database Archive</span>
         {% endif %}
+    </div>
+</div>
+
+<!-- Search & Filters Control Box -->
+<div class="filter-card">
+    <form method="GET" action="{{ url_for('history_page') }}" class="history-filter-form" id="historyFilterForm">
+        <input type="hidden" name="scope" value="{{ current_scope }}">
+
+        <!-- Search box: comment text -->
+        <div class="filter-field-row">
+            <label for="searchComments">Search Comments:</label>
+            <input type="text" id="searchComments" name="search" placeholder="Search comments by keyword (e.g. doctor, wait time, app, staff)..." value="{{ search_keyword or '' }}">
+        </div>
+
+        <!-- Sentiment, Domain, Date From, Date To controls -->
+        <div class="filter-field-grid">
+            <div class="filter-field">
+                <label for="sentimentFilter">Sentiment:</label>
+                <select id="sentimentFilter" name="sentiment">
+                    <option value="all" {% if current_sentiment == 'all' or not current_sentiment %}selected{% endif %}>All</option>
+                    <option value="positive" {% if current_sentiment == 'positive' %}selected{% endif %}>Positive</option>
+                    <option value="negative" {% if current_sentiment == 'negative' %}selected{% endif %}>Negative</option>
+                    <option value="neutral" {% if current_sentiment == 'neutral' %}selected{% endif %}>Neutral</option>
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="domainFilter">Domain:</label>
+                <select id="domainFilter" name="domain">
+                    <option value="all" {% if current_domain == 'all' or not current_domain %}selected{% endif %}>All</option>
+                    {% for d in domains %}
+                        <option value="{{ d }}" {% if current_domain == d %}selected{% endif %}>{{ d }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="dateFrom">Date From:</label>
+                <input type="date" id="dateFrom" name="date_from" value="{{ date_from or '' }}">
+            </div>
+
+            <div class="filter-field">
+                <label for="dateTo">Date To:</label>
+                <input type="date" id="dateTo" name="date_to" value="{{ date_to or '' }}">
+            </div>
+        </div>
+
+        <!-- Filter Action Buttons -->
+        <div class="filter-actions-row">
+            <div class="action-buttons-group">
+                <button type="submit" class="btn btn-primary" id="btnApplyFilters">Apply Filters</button>
+                <a href="{{ url_for('history_page', scope=current_scope) }}" class="btn btn-ghost" id="btnClearFilters">Clear Filters</a>
+            </div>
+            <div class="filter-summary-info">
+                {% if total_count > 0 %}
+                    Showing {{ comments|length }} of {{ total_count }} matching record{% if total_count != 1 %}s{% endif %}
+                {% endif %}
+            </div>
+        </div>
     </form>
 </div>
 
 <!-- History Table -->
 <div class="table-card">
-    <table class="data-table">
+    <table class="data-table" id="historyRecordsTable">
         <thead>
             <tr>
                 <th>ID</th>
-                <th>Comment Text</th>
+                <th>Comment</th>
                 <th>Domain</th>
                 <th>ML Sentiment</th>
                 <th>Confidence</th>
                 <th>VADER Baseline</th>
-                <th>Source</th>
-                <th>Created At</th>
+                <th>Recorded At</th>
                 <th>Action</th>
             </tr>
         </thead>
         <tbody>
-            {% if comments %}
+            {% if comments and comments|length > 0 %}
                 {% for item in comments %}
                     <tr>
                         <td>#{{ item.id }}</td>
@@ -74,7 +126,6 @@
                         <td>
                             <span class="vader-chip">{{ item.vader_sentiment|capitalize if item.vader_sentiment else '-' }} ({{ item.vader_compound }})</span>
                         </td>
-                        <td><span class="source-tag">{{ item.source }}</span></td>
                         <td class="time-cell">{{ item.created_at }}</td>
                         <td>
                             <form action="{{ url_for('delete_record', record_id=item.id) }}" method="POST" onsubmit="return confirm('Delete this comment record?');" style="display:inline;">
@@ -85,17 +136,44 @@
                 {% endfor %}
             {% else %}
                 <tr>
-                    <td colspan="9" class="text-center empty-state">
-                        No comment records found. 
-                        {% if search_keyword or current_sentiment != 'all' %}
-                            Try adjusting your search or filter filters.
-                        {% else %}
-                            Start by testing a comment on the <a href="{{ url_for('index') }}">Dashboard</a>.
-                        {% endif %}
+                    <td colspan="8" class="text-center empty-state-cell">
+                        <div class="empty-state-container">
+                            <span class="empty-state-icon">📋</span>
+                            <h3 class="empty-state-text">No records found matching your filters.</h3>
+                            <p class="empty-state-sub">Try searching with a different term or clearing active filters to view all entries.</p>
+                            <a href="{{ url_for('history_page', scope=current_scope) }}" class="btn btn-outline btn-sm">Clear Filters</a>
+                        </div>
                     </td>
                 </tr>
             {% endif %}
         </tbody>
     </table>
 </div>
+
+<!-- Safe Pagination Controls -->
+{% if total_pages > 1 %}
+<div class="pagination-container" id="paginationBar">
+    <div class="pagination-controls">
+        {% if current_page > 1 %}
+            <a href="{{ url_for('history_page', page=current_page - 1, search=search_keyword, sentiment=current_sentiment, domain=current_domain, date_from=date_from, date_to=date_to, scope=current_scope) }}" 
+               class="pagination-btn" id="prevPageBtn">
+                ← Previous
+            </a>
+        {% else %}
+            <span class="pagination-btn disabled" id="prevPageBtnDisabled">← Previous</span>
+        {% endif %}
+
+        <span class="page-indicator">Page {{ current_page }} of {{ total_pages }}</span>
+
+        {% if current_page < total_pages %}
+            <a href="{{ url_for('history_page', page=current_page + 1, search=search_keyword, sentiment=current_sentiment, domain=current_domain, date_from=date_from, date_to=date_to, scope=current_scope) }}" 
+               class="pagination-btn" id="nextPageBtn">
+                Next →
+            </a>
+        {% else %}
+            <span class="pagination-btn disabled" id="nextPageBtnDisabled">Next →</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 {% endblock %}

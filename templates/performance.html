@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block title %}Model Performance & Evaluation | E-Consultation Sentiment Analysis{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<section class="page-header">
+    <div class="header-split">
+        <div>
+            <h1>Model Performance & Evaluation</h1>
+            <p class="subtitle">Empirical benchmarking, multi-model evaluation, and confusion matrix analysis for e-consultation feedback classification.</p>
+        </div>
+        <div class="header-actions">
+            <a href="{{ url_for('index') }}" class="btn btn-outline">← Back to Dashboard</a>
+        </div>
+    </div>
+</section>
+
+<!-- Non-Diagnostic & Scope Disclaimer -->
+<div class="alert alert-info scope-disclaimer-alert">
+    <span class="alert-icon">ℹ️</span>
+    <div class="alert-body">
+        <strong>Non-Diagnostic System Scope:</strong>
+        This machine learning system performs natural language sentiment classification on qualitative user comments submitted through the e-consultation portal (e.g. feedback on usability, wait times, communications, and doctor attentiveness). It is <strong>strictly non-diagnostic</strong> and does not evaluate clinical symptoms or provide medical diagnoses.
+    </div>
+</div>
+
+<!-- Methodology Explanation Notice -->
+<div class="evaluation-explanation-card">
+    <span class="explanation-icon">⚖️</span>
+    <div class="explanation-content">
+        <h4 class="explanation-title">Standardized Evaluation Methodology</h4>
+        <p class="explanation-text">
+            The candidate classifiers are evaluated using the same test data. The selected model is the classifier with the strongest evaluation performance according to the project's model-selection metric.
+        </p>
+    </div>
+</div>
+
+<!-- Primary Performance KPI Grid -->
+<div class="metrics-kpi-grid">
+    <div class="perf-stat-card highlight">
+        <div class="stat-header">
+            <span class="stat-title">Active / Best Model</span>
+            <span class="stat-icon">🏆</span>
+        </div>
+        <div class="stat-value small">{{ best_model_name }}</div>
+        <div class="stat-sub">Calibrated Probability Output</div>
+    </div>
+
+    <div class="perf-stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Test Accuracy</span>
+            <span class="stat-icon">🎯</span>
+        </div>
+        <div class="stat-value">{{ best_model_data.accuracy }}%</div>
+        <div class="stat-sub">Overall correct test classifications</div>
+    </div>
+
+    <div class="perf-stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Weighted Precision</span>
+            <span class="stat-icon">🔍</span>
+        </div>
+        <div class="stat-value">{{ best_model_data.precision }}%</div>
+        <div class="stat-sub">Positive predictive value across classes</div>
+    </div>
+
+    <div class="perf-stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Weighted Recall</span>
+            <span class="stat-icon">📡</span>
+        </div>
+        <div class="stat-value">{{ best_model_data.recall }}%</div>
+        <div class="stat-sub">Sensitivity across sentiment classes</div>
+    </div>
+
+    <div class="perf-stat-card highlight-f1">
+        <div class="stat-header">
+            <span class="stat-title">F1-Score</span>
+            <span class="stat-icon">⭐</span>
+        </div>
+        <div class="stat-value">{{ best_model_data.f1_score }}%</div>
+        <div class="stat-sub">Primary Model Selection Metric</div>
+    </div>
+
+    <div class="perf-stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Training Samples</span>
+            <span class="stat-icon">📚</span>
+        </div>
+        <div class="stat-value">{{ train_samples }}</div>
+        <div class="stat-sub">80% Stratified Train Split</div>
+    </div>
+
+    <div class="perf-stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Test Samples</span>
+            <span class="stat-icon">🧪</span>
+        </div>
+        <div class="stat-value">{{ test_samples }}</div>
+        <div class="stat-sub">20% Stratified Holdout Test Split</div>
+    </div>
+
+    <div class="perf-stat-card">
+        <div class="stat-header">
+            <span class="stat-title">Classes Evaluated</span>
+            <span class="stat-icon">🏷️</span>
+        </div>
+        <div class="stat-value">{{ num_classes }}</div>
+        <div class="stat-sub">Negative & Positive Sentiment</div>
+    </div>
+</div>
+
+<!-- Visualizations Row: Chart.js Benchmark & Confusion Matrix Heatmap -->
+<div class="performance-visuals-grid">
+    <!-- Chart.js Model Comparison -->
+    <div class="card visual-card">
+        <div class="card-header-split">
+            <div>
+                <h3>Candidate Model Benchmarking</h3>
+                <p class="card-sub">Comparison of Accuracy, Precision, Recall, and F1-Score across classifiers.</p>
+            </div>
+            <span class="badge badge-neutral">Interactive Chart</span>
+        </div>
+        <div class="chart-container-perf">
+            <canvas id="modelComparisonChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Confusion Matrix Card -->
+    <div class="card visual-card">
+        <div class="card-header-split">
+            <div>
+                <h3>Confusion Matrix Heatmap</h3>
+                <p class="card-sub">Test set evaluation breakdown for selected champion ({{ best_model_name }}).</p>
+            </div>
+            <span class="badge badge-positive">Test Samples: {{ cm_details.total }}</span>
+        </div>
+
+        <div class="confusion-matrix-wrapper">
+            <div class="cm-table-container">
+                <table class="cm-table">
+                    <thead>
+                        <tr>
+                            <th colspan="2" rowspan="2" class="cm-axis-corner"></th>
+                            <th colspan="2" class="cm-axis-header">Predicted Class</th>
+                        </tr>
+                        <tr>
+                            <th class="cm-sub-header">Negative</th>
+                            <th class="cm-sub-header">Positive</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th rowspan="2" class="cm-axis-header-v">Actual Class</th>
+                            <th class="cm-sub-header-v">Negative</th>
+                            <td class="cm-cell cm-cell-correct" title="True Negative: {{ cm_details.tn }} correct negative predictions">
+                                <div class="cm-cell-val">{{ cm_details.tn }}</div>
+                                <div class="cm-cell-label">True Negative (TN)</div>
+                            </td>
+                            <td class="cm-cell cm-cell-error" title="False Positive: {{ cm_details.fp }} negative comments misclassified as positive">
+                                <div class="cm-cell-val">{{ cm_details.fp }}</div>
+                                <div class="cm-cell-label">False Positive (FP)</div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th class="cm-sub-header-v">Positive</th>
+                            <td class="cm-cell cm-cell-error" title="False Negative: {{ cm_details.fn }} positive comments misclassified as negative">
+                                <div class="cm-cell-val">{{ cm_details.fn }}</div>
+                                <div class="cm-cell-label">False Negative (FN)</div>
+                            </td>
+                            <td class="cm-cell cm-cell-correct" title="True Positive: {{ cm_details.tp }} correct positive predictions">
+                                <div class="cm-cell-val">{{ cm_details.tp }}</div>
+                                <div class="cm-cell-label">True Positive (TP)</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- CM Metric Chips -->
+            <div class="cm-summary-chips">
+                <div class="cm-chip chip-correct">
+                    <span class="chip-val">{{ cm_details.tn + cm_details.tp }}</span>
+                    <span class="chip-label">Correct Classifications ({{ ((cm_details.tn + cm_details.tp) / cm_details.total * 100)|round(1) }}%)</span>
+                </div>
+                <div class="cm-chip chip-error">
+                    <span class="chip-val">{{ cm_details.fp + cm_details.fn }}</span>
+                    <span class="chip-label">Misclassifications ({{ ((cm_details.fp + cm_details.fn) / cm_details.total * 100)|round(1) }}%)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Models Comparison Table -->
+<div class="table-card">
+    <div class="table-card-header">
+        <div>
+            <h2>Candidate Classifiers Detailed Comparison</h2>
+            <p class="subtitle">Empirical performance on stratified 20% holdout test set (80 comments).</p>
+        </div>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Model Architecture</th>
+                <th>Accuracy</th>
+                <th>Precision (Weighted)</th>
+                <th>Recall (Weighted)</th>
+                <th>F1-Score</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for name, row in models_comparison.items() %}
+                <tr class="{% if name == best_model_name %}row-champion{% endif %}">
+                    <td>
+                        <strong>{{ name }}</strong>
+                        {% if name == best_model_name %}
+                            <span class="champion-star" title="Selected Model">★</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ row.accuracy }}%</strong></td>
+                    <td>{{ row.precision }}%</td>
+                    <td>{{ row.recall }}%</td>
+                    <td><strong class="text-primary">{{ row.f1_score }}%</strong></td>
+                    <td>
+                        {% if name == best_model_name %}
+                            <span class="badge badge-positive">🏆 Active Champion</span>
+                        {% else %}
+                            <span class="badge badge-neutral">Evaluated Candidate</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Architecture & Pipeline Specifications Card -->
+<div class="card pipeline-spec-card">
+    <h3>ML Pipeline Architecture & Hyperparameters</h3>
+    <div class="pipeline-spec-grid">
+        <div class="spec-block">
+            <h4>1. Preprocessing Pipeline</h4>
+            <ul>
+                <li><strong>NLTK Tokenizer:</strong> Word punctuation tokenization</li>
+                <li><strong>Normalization:</strong> Lowercase standardizing & symbol cleanup</li>
+                <li><strong>Stopwords:</strong> English stopword removal</li>
+                <li><strong>Lemmatization:</strong> WordNet lemmatizer with noun/verb fallback</li>
+            </ul>
+        </div>
+
+        <div class="spec-block">
+            <h4>2. Feature Extraction</h4>
+            <ul>
+                <li><strong>Algorithm:</strong> TF-IDF Vectorizer</li>
+                <li><strong>N-Gram Range:</strong> (1, 2) Unigrams & Bigrams</li>
+                <li><strong>Max Vocabulary:</strong> 5,000 features</li>
+                <li><strong>Sublinear TF:</strong> Logarithmic term scaling enabled</li>
+            </ul>
+        </div>
+
+        <div class="spec-block">
+            <h4>3. Calibration & Baseline</h4>
+            <ul>
+                <li><strong>Primary Classifier:</strong> LinearSVC with dual='auto'</li>
+                <li><strong>Calibration:</strong> CalibratedClassifierCV for confidence scores</li>
+                <li><strong>Lexicon Baseline:</strong> VADER Compound Polarity Index</li>
+                <li><strong>Persistence:</strong> Joblib model and vectorizer serialization</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js Script -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const chartPayload = {{ chart_payload | tojson }};
+    const ctx = document.getElementById('modelComparisonChart');
+
+    if (ctx && chartPayload && chartPayload.labels) {
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: chartPayload.labels,
+                datasets: [
+                    {
+                        label: 'Accuracy (%)',
+                        data: chartPayload.accuracy,
+                        backgroundColor: 'rgba(2, 132, 199, 0.75)',
+                        borderColor: '#0284c7',
+                        borderWidth: 1.5,
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Precision (%)',
+                        data: chartPayload.precision,
+                        backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                        borderColor: '#10b981',
+                        borderWidth: 1.5,
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Recall (%)',
+                        data: chartPayload.recall,
+                        backgroundColor: 'rgba(245, 158, 11, 0.75)',
+                        borderColor: '#f59e0b',
+                        borderWidth: 1.5,
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'F1-Score (%)',
+                        data: chartPayload.f1_score,
+                        backgroundColor: 'rgba(99, 102, 241, 0.75)',
+                        borderColor: '#6366f1',
+                        borderWidth: 1.5,
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 88,
+                        max: 98,
+                        ticks: {
+                            callback: function(value) { return value + '%'; },
+                            font: { family: 'Inter' }
+                        },
+                        grid: { color: 'rgba(226, 232, 240, 0.8)' }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { family: 'Inter', weight: 600 } }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            font: { family: 'Inter', size: 12 },
+                            boxWidth: 12,
+                            padding: 14
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` ${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

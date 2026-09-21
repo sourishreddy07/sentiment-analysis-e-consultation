@@ -2,6 +2,13 @@
     "best_model": "Linear SVM",
     "best_f1": 93.75,
     "dataset_total": 400,
+    "training_samples": 320,
+    "test_samples": 80,
+    "num_classes": 2,
+    "classes": [
+        "negative",
+        "positive"
+    ],
     "class_distribution": {
         "positive": 206,
         "negative": 194

@@ -238,54 +238,151 @@ function initDistributionChart(stats) {
     });
 }
 
-// Chart 2: Domain-wise Stacked Bar
-function initDomainChart(stats) {
-    const ctx = document.getElementById('domainChart');
-    if (!ctx) return;
+// Chart 2: Consultation Domain Analysis (Grouped/Stacked Bar + Metrics Breakdown)
+function renderDomainAnalytics(domainList) {
+    const emptyState = document.getElementById('domainEmptyState');
+    const chartContainer = document.getElementById('domainChartContainer');
+    const metricsContainer = document.getElementById('domainMetricsContainer');
+    const canvas = document.getElementById('domainChart');
 
-    // Aggregate by domain
-    const domains = {};
-    if (stats && stats.domain_distribution) {
-        stats.domain_distribution.forEach(row => {
-            const dom = row.domain || 'general';
-            if (!domains[dom]) domains[dom] = { positive: 0, negative: 0, neutral: 0 };
-            domains[dom][row.sentiment.toLowerCase()] = row.count;
+    if (!canvas) return;
+
+    // Normalization: handles either structured [{domain, positive, negative, neutral}] or legacy rows
+    let normalized = [];
+    if (Array.isArray(domainList) && domainList.length > 0) {
+        if (domainList[0].positive !== undefined) {
+            normalized = domainList;
+        } else {
+            const map = {};
+            domainList.forEach(r => {
+                const dom = r.domain || 'general';
+                if (!map[dom]) map[dom] = { domain: dom, positive: 0, negative: 0, neutral: 0 };
+                const s = (r.sentiment || '').toLowerCase();
+                if (s in map[dom]) map[dom][s] += (r.count || 0);
+            });
+            normalized = Object.values(map);
+        }
+    }
+
+    const hasData = normalized.length > 0;
+
+    if (!hasData) {
+        if (emptyState) emptyState.style.display = 'flex';
+        if (chartContainer) chartContainer.style.display = 'none';
+        if (metricsContainer) metricsContainer.innerHTML = '';
+        if (domainChartInstance) {
+            domainChartInstance.destroy();
+            domainChartInstance = null;
+        }
+        return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+    if (chartContainer) chartContainer.style.display = 'block';
+
+    const labels = normalized.map(d => (d.domain || 'general').replace(/_/g, ' ').toUpperCase());
+    const posData = normalized.map(d => d.positive || 0);
+    const negData = normalized.map(d => d.negative || 0);
+    const neuData = normalized.map(d => d.neutral || 0);
+
+    if (domainChartInstance) {
+        domainChartInstance.data.labels = labels;
+        domainChartInstance.data.datasets[0].data = posData;
+        domainChartInstance.data.datasets[1].data = negData;
+        domainChartInstance.data.datasets[2].data = neuData;
+        domainChartInstance.update();
+    } else {
+        domainChartInstance = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Positive',
+                        data: posData,
+                        backgroundColor: '#10b981',
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Negative',
+                        data: negData,
+                        backgroundColor: '#ef4444',
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Neutral',
+                        data: neuData,
+                        backgroundColor: '#6366f1',
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        stacked: true,
+                        ticks: { font: { family: 'Inter', size: 11, weight: '500' } },
+                        grid: { display: false }
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        ticks: { precision: 0, stepSize: 1, font: { family: 'Inter', size: 11 } }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { font: { family: 'Inter', size: 12 }, boxWidth: 14 }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Session Sentiment by Consultation Domain',
+                        font: { family: 'Inter', size: 13, weight: '600' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            afterTitle: (items) => {
+                                const idx = items[0].dataIndex;
+                                const item = normalized[idx];
+                                const total = (item.positive || 0) + (item.negative || 0) + (item.neutral || 0);
+                                return `Total: ${total} comments`;
+                            }
+                        }
+                    }
+                }
+            }
         });
     }
 
-    const hasDomains = Object.keys(domains).length > 0;
-    const labels = hasDomains ? Object.keys(domains) : ['GENERAL'];
-    const posData = labels.map(d => (domains[d] ? domains[d].positive : 0));
-    const negData = labels.map(d => (domains[d] ? domains[d].negative : 0));
-    const neuData = labels.map(d => (domains[d] ? domains[d].neutral : 0));
+    // Render domain breakdown metric cards
+    if (metricsContainer) {
+        metricsContainer.innerHTML = normalized.map(d => {
+            const domainTitle = (d.domain || 'general')
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, c => c.toUpperCase());
+            const total = (d.positive || 0) + (d.negative || 0) + (d.neutral || 0);
+            return `
+                <div class="domain-stat-card">
+                    <div class="domain-card-head">
+                        <span class="domain-card-name">${domainTitle}</span>
+                        <span class="domain-card-total">${total} total</span>
+                    </div>
+                    <div class="domain-card-counts">
+                        <span class="domain-pill pos"><span>Positive:</span> <strong>${d.positive || 0}</strong></span>
+                        <span class="domain-pill neg"><span>Negative:</span> <strong>${d.negative || 0}</strong></span>
+                        <span class="domain-pill neu"><span>Neutral:</span> <strong>${d.neutral || 0}</strong></span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+}
 
-    domainChartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels.map(l => l.replace('_', ' ').toUpperCase()),
-            datasets: [
-                { label: 'Positive', data: posData, backgroundColor: '#10b981' },
-                { label: 'Negative', data: negData, backgroundColor: '#ef4444' },
-                { label: 'Neutral', data: neuData, backgroundColor: '#6366f1' }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                x: { stacked: true, ticks: { font: { family: 'Inter', size: 10 } } },
-                y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
-            },
-            plugins: {
-                legend: { position: 'bottom' },
-                title: {
-                    display: true,
-                    text: hasDomains ? 'Sentiment by Healthcare Domain' : 'Sentiment by Healthcare Domain (Awaiting Comments)',
-                    font: { family: 'Inter', size: 14, weight: '600' }
-                }
-            }
-        }
-    });
+function initDomainChart(stats) {
+    renderDomainAnalytics(stats ? stats.domain_distribution : []);
 }
 
 // Chart 3: Model Benchmark Comparisons
@@ -366,24 +463,8 @@ async function refreshCharts() {
             distributionChartInstance.update();
         }
 
-        if (domainChartInstance && stats.domain_distribution) {
-            const domains = {};
-            stats.domain_distribution.forEach(row => {
-                const dom = row.domain || 'general';
-                if (!domains[dom]) domains[dom] = { positive: 0, negative: 0, neutral: 0 };
-                domains[dom][row.sentiment.toLowerCase()] = row.count;
-            });
-            const labels = Object.keys(domains);
-            if (labels.length > 0) {
-                domainChartInstance.data.labels = labels.map(l => l.replace('_', ' ').toUpperCase());
-                domainChartInstance.data.datasets[0].data = labels.map(d => domains[d].positive);
-                domainChartInstance.data.datasets[1].data = labels.map(d => domains[d].negative);
-                domainChartInstance.data.datasets[2].data = labels.map(d => domains[d].neutral);
-                if (domainChartInstance.options.plugins.title) {
-                    domainChartInstance.options.plugins.title.text = 'Sentiment by Healthcare Domain';
-                }
-                domainChartInstance.update();
-            }
+        if (stats && typeof stats.domain_distribution !== 'undefined') {
+            renderDomainAnalytics(stats.domain_distribution);
         }
     } catch (e) {
         console.warn('Chart refresh warning:', e);
