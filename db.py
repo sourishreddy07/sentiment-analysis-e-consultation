@@ -1008,5 +1008,3 @@ def generate_actionable_insights(summary, domain_insights, problem_categories):
     )
 
     return insights
-
-

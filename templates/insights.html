@@ -19,9 +19,9 @@
                 Scope: <strong>{% if current_scope == 'session' %}Demo Session{% else %}All History{% endif %}</strong>
             </span>
             {% if current_scope == 'session' %}
-                <span class="badge badge-session" title="Active Session ID">
-                    ID: {{ demo_session_id }}
-                </span>
+            <span class="badge badge-session" title="Active Session ID">
+                ID: {{ demo_session_id }}
+            </span>
             {% endif %}
         </div>
     </div>
@@ -34,11 +34,11 @@
                 <label class="filter-label">Data Scope</label>
                 <div class="scope-toggle-buttons">
                     <a href="{{ url_for('insights_page', scope='session', date_from=date_from, date_to=date_to, domain=current_domain, sentiment=current_sentiment) }}"
-                       class="scope-btn {% if current_scope == 'session' %}active{% endif %}">
+                        class="scope-btn {% if current_scope == 'session' %}active{% endif %}">
                         Current Session
                     </a>
                     <a href="{{ url_for('insights_page', scope='all', date_from=date_from, date_to=date_to, domain=current_domain, sentiment=current_sentiment) }}"
-                       class="scope-btn {% if current_scope == 'all' %}active{% endif %}">
+                        class="scope-btn {% if current_scope == 'all' %}active{% endif %}">
                         All History
                     </a>
                 </div>
@@ -61,9 +61,10 @@
             <div class="filter-group">
                 <label for="filter-domain" class="filter-label">Domain</label>
                 <select id="filter-domain" name="domain" class="form-select">
-                    <option value="all" {% if current_domain == 'all' or not current_domain %}selected{% endif %}>All Domains</option>
+                    <option value="all" {% if current_domain=='all' or not current_domain %}selected{% endif %}>All
+                        Domains</option>
                     {% for d in available_domains %}
-                        <option value="{{ d }}" {% if current_domain == d %}selected{% endif %}>{{ d }}</option>
+                    <option value="{{ d }}" {% if current_domain==d %}selected{% endif %}>{{ d }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -72,10 +73,14 @@
             <div class="filter-group">
                 <label for="filter-sentiment" class="filter-label">Sentiment</label>
                 <select id="filter-sentiment" name="sentiment" class="form-select">
-                    <option value="all" {% if current_sentiment == 'all' or not current_sentiment %}selected{% endif %}>All Sentiments</option>
-                    <option value="positive" {% if current_sentiment == 'positive' %}selected{% endif %}>Positive Only</option>
-                    <option value="negative" {% if current_sentiment == 'negative' %}selected{% endif %}>Negative Only</option>
-                    <option value="neutral" {% if current_sentiment == 'neutral' %}selected{% endif %}>Neutral Only</option>
+                    <option value="all" {% if current_sentiment=='all' or not current_sentiment %}selected{% endif %}>
+                        All Sentiments</option>
+                    <option value="positive" {% if current_sentiment=='positive' %}selected{% endif %}>Positive Only
+                    </option>
+                    <option value="negative" {% if current_sentiment=='negative' %}selected{% endif %}>Negative Only
+                    </option>
+                    <option value="neutral" {% if current_sentiment=='neutral' %}selected{% endif %}>Neutral Only
+                    </option>
                 </select>
             </div>
 
@@ -89,354 +94,349 @@
 
     <!-- Empty State -->
     {% if insights.summary.total == 0 %}
-        <div class="empty-state-card">
-            <div class="empty-state-icon">📋</div>
-            <h2 class="empty-state-title">No feedback insights available yet.</h2>
-            <p class="empty-state-text">
-                Submit comments or switch to All History to view insights.
-            </p>
-            <div class="empty-state-actions">
-                {% if current_scope == 'session' %}
-                    <a href="{{ url_for('insights_page', scope='all') }}" class="btn btn-primary">
-                        Switch to All History (Persistent Data)
-                    </a>
-                {% endif %}
-                <a href="{{ url_for('index') }}" class="btn btn-outline">
-                    Go to Live Dashboard
-                </a>
-            </div>
+    <div class="empty-state-card">
+        <div class="empty-state-icon">📋</div>
+        <h2 class="empty-state-title">No feedback insights available yet.</h2>
+        <p class="empty-state-text">
+            Submit comments or switch to All History to view insights.
+        </p>
+        <div class="empty-state-actions">
+            {% if current_scope == 'session' %}
+            <a href="{{ url_for('insights_page', scope='all') }}" class="btn btn-primary">
+                Switch to All History (Persistent Data)
+            </a>
+            {% endif %}
+            <a href="{{ url_for('index') }}" class="btn btn-outline">
+                Go to Live Dashboard
+            </a>
         </div>
+    </div>
     {% else %}
 
-        <!-- Top KPI Summary Cards -->
-        <section class="kpi-grid">
-            <div class="kpi-card">
-                <div class="kpi-header">
-                    <span class="kpi-title">Total Feedback</span>
-                    <span class="kpi-icon">📝</span>
-                </div>
-                <div class="kpi-value">{{ "{:,}".format(insights.summary.total) }}</div>
-                <div class="kpi-subtext">Evaluated comments</div>
+    <!-- Top KPI Summary Cards -->
+    <section class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span class="kpi-title">Total Feedback</span>
+                <span class="kpi-icon">📝</span>
             </div>
+            <div class="kpi-value">{{ "{:,}".format(insights.summary.total) }}</div>
+            <div class="kpi-subtext">Evaluated comments</div>
+        </div>
 
-            <div class="kpi-card positive-accent">
-                <div class="kpi-header">
-                    <span class="kpi-title">Positive Feedback</span>
-                    <span class="kpi-icon">🟢</span>
-                </div>
-                <div class="kpi-value text-positive">{{ "{:,}".format(insights.summary.positive) }}</div>
-                <div class="kpi-subtext">
-                    <span class="pill-pct pill-positive">{{ insights.summary.positive_pct }}%</span> of total
-                </div>
+        <div class="kpi-card positive-accent">
+            <div class="kpi-header">
+                <span class="kpi-title">Positive Feedback</span>
+                <span class="kpi-icon">🟢</span>
             </div>
-
-            <div class="kpi-card negative-accent">
-                <div class="kpi-header">
-                    <span class="kpi-title">Negative Feedback</span>
-                    <span class="kpi-icon">🔴</span>
-                </div>
-                <div class="kpi-value text-negative">{{ "{:,}".format(insights.summary.negative) }}</div>
-                <div class="kpi-subtext">
-                    <span class="pill-pct pill-negative">{{ insights.summary.negative_pct }}%</span> of total
-                </div>
+            <div class="kpi-value text-positive">{{ "{:,}".format(insights.summary.positive) }}</div>
+            <div class="kpi-subtext">
+                <span class="pill-pct pill-positive">{{ insights.summary.positive_pct }}%</span> of total
             </div>
+        </div>
 
-            <div class="kpi-card neutral-accent">
-                <div class="kpi-header">
-                    <span class="kpi-title">Neutral Feedback</span>
-                    <span class="kpi-icon">⚪</span>
-                </div>
-                <div class="kpi-value text-neutral">{{ "{:,}".format(insights.summary.neutral) }}</div>
-                <div class="kpi-subtext">
-                    <span class="pill-pct pill-neutral">{{ insights.summary.neutral_pct }}%</span> of total
-                </div>
+        <div class="kpi-card negative-accent">
+            <div class="kpi-header">
+                <span class="kpi-title">Negative Feedback</span>
+                <span class="kpi-icon">🔴</span>
             </div>
-
-            <div class="kpi-card">
-                <div class="kpi-header">
-                    <span class="kpi-title">Most Active Domain</span>
-                    <span class="kpi-icon">🏛️</span>
-                </div>
-                <div class="kpi-value domain-title">{{ insights.summary.most_active_domain }}</div>
-                <div class="kpi-subtext">{{ "{:,}".format(insights.summary.most_active_domain_count) }} feedback items</div>
+            <div class="kpi-value text-negative">{{ "{:,}".format(insights.summary.negative) }}</div>
+            <div class="kpi-subtext">
+                <span class="pill-pct pill-negative">{{ insights.summary.negative_pct }}%</span> of total
             </div>
+        </div>
 
-            <div class="kpi-card">
-                <div class="kpi-header">
-                    <span class="kpi-title">Average Confidence</span>
-                    <span class="kpi-icon">🎯</span>
-                </div>
-                <div class="kpi-value text-accent">{{ insights.summary.average_confidence }}%</div>
-                <div class="kpi-subtext">Scikit-Learn ML score</div>
+        <div class="kpi-card neutral-accent">
+            <div class="kpi-header">
+                <span class="kpi-title">Neutral Feedback</span>
+                <span class="kpi-icon">⚪</span>
             </div>
-        </section>
+            <div class="kpi-value text-neutral">{{ "{:,}".format(insights.summary.neutral) }}</div>
+            <div class="kpi-subtext">
+                <span class="pill-pct pill-neutral">{{ insights.summary.neutral_pct }}%</span> of total
+            </div>
+        </div>
 
-        <!-- Key Actionable Feedback Insights -->
-        <section class="actionable-insights-section">
-            <div class="insights-card">
-                <div class="insights-card-header">
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span class="kpi-title">Most Active Domain</span>
+                <span class="kpi-icon">🏛️</span>
+            </div>
+            <div class="kpi-value domain-title">{{ insights.summary.most_active_domain }}</div>
+            <div class="kpi-subtext">{{ "{:,}".format(insights.summary.most_active_domain_count) }} feedback items</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span class="kpi-title">Average Confidence</span>
+                <span class="kpi-icon">🎯</span>
+            </div>
+            <div class="kpi-value text-accent">{{ insights.summary.average_confidence }}%</div>
+            <div class="kpi-subtext">Scikit-Learn ML score</div>
+        </div>
+    </section>
+
+    <!-- Key Actionable Feedback Insights -->
+    <section class="actionable-insights-section">
+        <div class="insights-card">
+            <div class="insights-card-header">
+                <h2 class="card-title">
+                    <span class="section-icon">🎯</span> Key Feedback Insights
+                </h2>
+                <span class="data-badge">Factual Data Synthesis</span>
+            </div>
+            <ul class="actionable-insights-list">
+                {% for statement in insights.actionable_insights %}
+                <li class="actionable-item">
+                    <span class="bullet-check">✓</span>
+                    <span class="bullet-text">{{ statement }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+
+    <!-- Top Positive & Top Negative Feedback Deep Dive -->
+    <section class="feedback-quotes-grid">
+        <!-- Top Positive Feedback -->
+        <div class="feedback-column-card">
+            <div class="feedback-column-header positive-header">
+                <h2 class="card-title">
+                    <span class="sentiment-indicator indicator-pos">▲</span> Top Positive Feedback
+                </h2>
+                <span class="header-count-pill">{{ insights.top_positive | length }} items</span>
+            </div>
+            <div class="feedback-items-list">
+                {% if insights.top_positive %}
+                {% for fb in insights.top_positive %}
+                <div class="feedback-quote-item positive-quote">
+                    <div class="quote-text">“{{ fb.comment_text }}”</div>
+                    <div class="quote-footer">
+                        <span class="domain-pill">{{ fb.domain }}</span>
+                        <span class="confidence-pill conf-pos">
+                            {% if fb.confidence <= 1 %} {{ (fb.confidence * 100) | round(1) }}% Conf {% else %} {{
+                                fb.confidence | round(1) }}% Conf {% endif %} </span>
+                                <span class="quote-date">{{ fb.created_at_str or fb.created_at }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="no-quotes-msg">No positive feedback found for the selected filters.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Top Negative Feedback -->
+        <div class="feedback-column-card">
+            <div class="feedback-column-header negative-header">
+                <h2 class="card-title">
+                    <span class="sentiment-indicator indicator-neg">▼</span> Top Negative Feedback
+                </h2>
+                <span class="header-count-pill">{{ insights.top_negative | length }} items</span>
+            </div>
+            <div class="feedback-items-list">
+                {% if insights.top_negative %}
+                {% for fb in insights.top_negative %}
+                <div class="feedback-quote-item negative-quote">
+                    <div class="quote-text">“{{ fb.comment_text }}”</div>
+                    <div class="quote-footer">
+                        <span class="domain-pill">{{ fb.domain }}</span>
+                        <span class="confidence-pill conf-neg">
+                            {% if fb.confidence <= 1 %} {{ (fb.confidence * 100) | round(1) }}% Conf {% else %} {{
+                                fb.confidence | round(1) }}% Conf {% endif %} </span>
+                                <span class="quote-date">{{ fb.created_at_str or fb.created_at }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="no-quotes-msg">No negative feedback found for the selected filters.</div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <!-- NLP Keyword Analysis -->
+    <section class="nlp-keywords-section">
+        <div class="nlp-grid">
+            <!-- Frequently Mentioned Words -->
+            <div class="nlp-card">
+                <div class="nlp-card-header">
                     <h2 class="card-title">
-                        <span class="section-icon">🎯</span> Key Feedback Insights
+                        <span class="section-icon">📊</span> Frequently Mentioned Words
                     </h2>
-                    <span class="data-badge">Factual Data Synthesis</span>
+                    <span class="nlp-meta-badge">Overall NLP Tokens</span>
                 </div>
-                <ul class="actionable-insights-list">
-                    {% for statement in insights.actionable_insights %}
-                        <li class="actionable-item">
-                            <span class="bullet-check">✓</span>
-                            <span class="bullet-text">{{ statement }}</span>
-                        </li>
+                <p class="nlp-desc">Most prevalent meaningful words extracted via NLTK lemmatization and stopword
+                    removal.</p>
+                <div class="ranked-word-list">
+                    {% if insights.frequent_words %}
+                    {% for item in insights.frequent_words %}
+                    <div class="ranked-word-row">
+                        <span class="rank-index">{{ loop.index }}.</span>
+                        <span class="ranked-word">{{ item.word }}</span>
+                        <span class="ranked-count">{{ item.count }}</span>
+                    </div>
                     {% endfor %}
-                </ul>
-            </div>
-        </section>
-
-        <!-- Top Positive & Top Negative Feedback Deep Dive -->
-        <section class="feedback-quotes-grid">
-            <!-- Top Positive Feedback -->
-            <div class="feedback-column-card">
-                <div class="feedback-column-header positive-header">
-                    <h2 class="card-title">
-                        <span class="sentiment-indicator indicator-pos">▲</span> Top Positive Feedback
-                    </h2>
-                    <span class="header-count-pill">{{ insights.top_positive | length }} items</span>
-                </div>
-                <div class="feedback-items-list">
-                    {% if insights.top_positive %}
-                        {% for fb in insights.top_positive %}
-                            <div class="feedback-quote-item positive-quote">
-                                <div class="quote-text">“{{ fb.comment_text }}”</div>
-                                <div class="quote-footer">
-                                    <span class="domain-pill">{{ fb.domain }}</span>
-                                    <span class="confidence-pill conf-pos">
-                                        {% if fb.confidence <= 1 %}
-                                            {{ (fb.confidence * 100) | round(1) }}% Conf
-                                        {% else %}
-                                            {{ fb.confidence | round(1) }}% Conf
-                                        {% endif %}
-                                    </span>
-                                    <span class="quote-date">{{ fb.created_at_str or fb.created_at }}</span>
-                                </div>
-                            </div>
-                        {% endfor %}
                     {% else %}
-                        <div class="no-quotes-msg">No positive feedback found for the selected filters.</div>
+                    <div class="no-quotes-msg">Insufficient data for word ranking.</div>
                     {% endif %}
                 </div>
             </div>
 
-            <!-- Top Negative Feedback -->
-            <div class="feedback-column-card">
-                <div class="feedback-column-header negative-header">
+            <!-- Common Positive Keywords -->
+            <div class="nlp-card">
+                <div class="nlp-card-header">
                     <h2 class="card-title">
-                        <span class="sentiment-indicator indicator-neg">▼</span> Top Negative Feedback
+                        <span class="section-icon">🟢</span> Common Positive Keywords
                     </h2>
-                    <span class="header-count-pill">{{ insights.top_negative | length }} items</span>
+                    <span class="nlp-meta-badge">Positive Corpus</span>
                 </div>
-                <div class="feedback-items-list">
-                    {% if insights.top_negative %}
-                        {% for fb in insights.top_negative %}
-                            <div class="feedback-quote-item negative-quote">
-                                <div class="quote-text">“{{ fb.comment_text }}”</div>
-                                <div class="quote-footer">
-                                    <span class="domain-pill">{{ fb.domain }}</span>
-                                    <span class="confidence-pill conf-neg">
-                                        {% if fb.confidence <= 1 %}
-                                            {{ (fb.confidence * 100) | round(1) }}% Conf
-                                        {% else %}
-                                            {{ fb.confidence | round(1) }}% Conf
-                                        {% endif %}
-                                    </span>
-                                    <span class="quote-date">{{ fb.created_at_str or fb.created_at }}</span>
-                                </div>
-                            </div>
-                        {% endfor %}
+                <p class="nlp-desc">Prominent terms appearing in comments classified as positive.</p>
+                <div class="ranked-word-list">
+                    {% if insights.positive_keywords %}
+                    {% for item in insights.positive_keywords %}
+                    <div class="ranked-word-row word-pos">
+                        <span class="rank-index">{{ loop.index }}.</span>
+                        <span class="ranked-word">{{ item.word }}</span>
+                        <span class="ranked-count badge-pos-count">{{ item.count }}</span>
+                    </div>
+                    {% endfor %}
                     {% else %}
-                        <div class="no-quotes-msg">No negative feedback found for the selected filters.</div>
+                    <div class="no-quotes-msg">No positive keywords extracted.</div>
                     {% endif %}
                 </div>
             </div>
-        </section>
 
-        <!-- NLP Keyword Analysis -->
-        <section class="nlp-keywords-section">
-            <div class="nlp-grid">
-                <!-- Frequently Mentioned Words -->
-                <div class="nlp-card">
-                    <div class="nlp-card-header">
-                        <h2 class="card-title">
-                            <span class="section-icon">📊</span> Frequently Mentioned Words
-                        </h2>
-                        <span class="nlp-meta-badge">Overall NLP Tokens</span>
-                    </div>
-                    <p class="nlp-desc">Most prevalent meaningful words extracted via NLTK lemmatization and stopword removal.</p>
-                    <div class="ranked-word-list">
-                        {% if insights.frequent_words %}
-                            {% for item in insights.frequent_words %}
-                                <div class="ranked-word-row">
-                                    <span class="rank-index">{{ loop.index }}.</span>
-                                    <span class="ranked-word">{{ item.word }}</span>
-                                    <span class="ranked-count">{{ item.count }}</span>
-                                </div>
-                            {% endfor %}
-                        {% else %}
-                            <div class="no-quotes-msg">Insufficient data for word ranking.</div>
-                        {% endif %}
-                    </div>
+            <!-- Common Negative Keywords -->
+            <div class="nlp-card">
+                <div class="nlp-card-header">
+                    <h2 class="card-title">
+                        <span class="section-icon">🔴</span> Common Negative Keywords
+                    </h2>
+                    <span class="nlp-meta-badge">Negative Corpus</span>
                 </div>
-
-                <!-- Common Positive Keywords -->
-                <div class="nlp-card">
-                    <div class="nlp-card-header">
-                        <h2 class="card-title">
-                            <span class="section-icon">🟢</span> Common Positive Keywords
-                        </h2>
-                        <span class="nlp-meta-badge">Positive Corpus</span>
+                <p class="nlp-desc">Recurring friction terms appearing in comments classified as negative.</p>
+                <div class="ranked-word-list">
+                    {% if insights.negative_keywords %}
+                    {% for item in insights.negative_keywords %}
+                    <div class="ranked-word-row word-neg">
+                        <span class="rank-index">{{ loop.index }}.</span>
+                        <span class="ranked-word">{{ item.word }}</span>
+                        <span class="ranked-count badge-neg-count">{{ item.count }}</span>
                     </div>
-                    <p class="nlp-desc">Prominent terms appearing in comments classified as positive.</p>
-                    <div class="ranked-word-list">
-                        {% if insights.positive_keywords %}
-                            {% for item in insights.positive_keywords %}
-                                <div class="ranked-word-row word-pos">
-                                    <span class="rank-index">{{ loop.index }}.</span>
-                                    <span class="ranked-word">{{ item.word }}</span>
-                                    <span class="ranked-count badge-pos-count">{{ item.count }}</span>
-                                </div>
-                            {% endfor %}
-                        {% else %}
-                            <div class="no-quotes-msg">No positive keywords extracted.</div>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <!-- Common Negative Keywords -->
-                <div class="nlp-card">
-                    <div class="nlp-card-header">
-                        <h2 class="card-title">
-                            <span class="section-icon">🔴</span> Common Negative Keywords
-                        </h2>
-                        <span class="nlp-meta-badge">Negative Corpus</span>
-                    </div>
-                    <p class="nlp-desc">Recurring friction terms appearing in comments classified as negative.</p>
-                    <div class="ranked-word-list">
-                        {% if insights.negative_keywords %}
-                            {% for item in insights.negative_keywords %}
-                                <div class="ranked-word-row word-neg">
-                                    <span class="rank-index">{{ loop.index }}.</span>
-                                    <span class="ranked-word">{{ item.word }}</span>
-                                    <span class="ranked-count badge-neg-count">{{ item.count }}</span>
-                                </div>
-                            {% endfor %}
-                        {% else %}
-                            <div class="no-quotes-msg">No negative keywords extracted.</div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Complaint / Problem Categories -->
-        <section class="problem-categories-section">
-            <div class="categories-card">
-                <div class="categories-header">
-                    <div>
-                        <h2 class="card-title">
-                            <span class="section-icon">🏷️</span> Complaint & Problem Categories
-                        </h2>
-                        <p class="card-subtitle">
-                            Rule-based administrative classification derived from transparent keyword regex patterns.
-                        </p>
-                    </div>
-                    <span class="disclaimer-badge" title="Rule-based keyword mapping for administrative triage only.">
-                        Administrative Analytics (Not Medically Validated)
-                    </span>
-                </div>
-
-                <div class="categories-grid">
-                    {% for cat in insights.problem_categories %}
-                        <div class="category-item-card {% if cat.name == 'Technical Issue' or cat.name == 'Waiting / Delay' %}cat-alert{% endif %}">
-                            <div class="cat-top">
-                                <span class="cat-name">{{ cat.name }}</span>
-                                <span class="cat-count-badge">{{ cat.count }}</span>
-                            </div>
-                            <div class="cat-bar-container">
-                                <div class="cat-bar-fill" data-percent="{{ cat.percentage }}" role="progressbar" aria-valuenow="{{ cat.percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
-                            </div>
-                            <div class="cat-footer">
-                                <span class="cat-pct">{{ cat.percentage }}% of feedback</span>
-                                {% if cat.negative_count > 0 %}
-                                    <span class="cat-neg-sub">({{ cat.negative_count }} negative)</span>
-                                {% endif %}
-                            </div>
-                        </div>
                     {% endfor %}
+                    {% else %}
+                    <div class="no-quotes-msg">No negative keywords extracted.</div>
+                    {% endif %}
                 </div>
             </div>
-        </section>
+        </div>
+    </section>
 
-        <!-- Domain-Specific Insights Table -->
-        <section class="domain-insights-section">
-            <div class="domain-table-card">
-                <div class="domain-table-header">
-                    <div>
-                        <h2 class="card-title">
-                            <span class="section-icon">🏛️</span> Domain-Specific Insights
-                        </h2>
-                        <p class="card-subtitle">
-                            Breakdown of comment volumes, sentiment ratios, and ML confidence across consultation domains.
-                        </p>
+    <!-- Complaint / Problem Categories -->
+    <section class="problem-categories-section">
+        <div class="categories-card">
+            <div class="categories-header">
+                <div>
+                    <h2 class="card-title">
+                        <span class="section-icon">🏷️</span> Complaint & Problem Categories
+                    </h2>
+                    <p class="card-subtitle">
+                        Rule-based administrative classification derived from transparent keyword regex patterns.
+                    </p>
+                </div>
+                <span class="disclaimer-badge" title="Rule-based keyword mapping for administrative triage only.">
+                    Administrative Analytics (Not Medically Validated)
+                </span>
+            </div>
+
+            <div class="categories-grid">
+                {% for cat in insights.problem_categories %}
+                <div
+                    class="category-item-card {% if cat.name == 'Technical Issue' or cat.name == 'Waiting / Delay' %}cat-alert{% endif %}">
+                    <div class="cat-top">
+                        <span class="cat-name">{{ cat.name }}</span>
+                        <span class="cat-count-badge">{{ cat.count }}</span>
                     </div>
-                    <span class="data-badge">{{ insights.domain_insights | length }} Domains</span>
+                    <div class="cat-bar-container">
+                        <div class="cat-bar-fill" data-percent="{{ cat.percentage }}" role="progressbar"
+                            aria-valuenow="{{ cat.percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <div class="cat-footer">
+                        <span class="cat-pct">{{ cat.percentage }}% of feedback</span>
+                        {% if cat.negative_count > 0 %}
+                        <span class="cat-neg-sub">({{ cat.negative_count }} negative)</span>
+                        {% endif %}
+                    </div>
                 </div>
-
-                <div class="table-responsive">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Domain</th>
-                                <th class="text-right">Total Feedback</th>
-                                <th class="text-right">Positive</th>
-                                <th class="text-right">Negative</th>
-                                <th class="text-right">Neutral</th>
-                                <th class="text-right">Positive %</th>
-                                <th class="text-right">Negative %</th>
-                                <th class="text-right">Avg Confidence</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for d in insights.domain_insights %}
-                                <tr>
-                                    <td class="domain-cell">
-                                        <span class="domain-pill">{{ d.domain }}</span>
-                                    </td>
-                                    <td class="text-right font-semibold">{{ "{:,}".format(d.total) }}</td>
-                                    <td class="text-right text-positive">{{ "{:,}".format(d.positive) }}</td>
-                                    <td class="text-right text-negative">{{ "{:,}".format(d.negative) }}</td>
-                                    <td class="text-right text-neutral">{{ "{:,}".format(d.neutral) }}</td>
-                                    <td class="text-right">
-                                        <span class="pill-pct pill-positive">{{ d.positive_pct }}%</span>
-                                    </td>
-                                    <td class="text-right">
-                                        <span class="pill-pct pill-negative">{{ d.negative_pct }}%</span>
-                                    </td>
-                                    <td class="text-right font-mono">{{ d.average_confidence }}%</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                {% endfor %}
             </div>
-        </section>
+        </div>
+    </section>
+
+    <!-- Domain-Specific Insights Table -->
+    <section class="domain-insights-section">
+        <div class="domain-table-card">
+            <div class="domain-table-header">
+                <div>
+                    <h2 class="card-title">
+                        <span class="section-icon">🏛️</span> Domain-Specific Insights
+                    </h2>
+                    <p class="card-subtitle">
+                        Breakdown of comment volumes, sentiment ratios, and ML confidence across consultation domains.
+                    </p>
+                </div>
+                <span class="data-badge">{{ insights.domain_insights | length }} Domains</span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Domain</th>
+                            <th class="text-right">Total Feedback</th>
+                            <th class="text-right">Positive</th>
+                            <th class="text-right">Negative</th>
+                            <th class="text-right">Neutral</th>
+                            <th class="text-right">Positive %</th>
+                            <th class="text-right">Negative %</th>
+                            <th class="text-right">Avg Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in insights.domain_insights %}
+                        <tr>
+                            <td class="domain-cell">
+                                <span class="domain-pill">{{ d.domain }}</span>
+                            </td>
+                            <td class="text-right font-semibold">{{ "{:,}".format(d.total) }}</td>
+                            <td class="text-right text-positive">{{ "{:,}".format(d.positive) }}</td>
+                            <td class="text-right text-negative">{{ "{:,}".format(d.negative) }}</td>
+                            <td class="text-right text-neutral">{{ "{:,}".format(d.neutral) }}</td>
+                            <td class="text-right">
+                                <span class="pill-pct pill-positive">{{ d.positive_pct }}%</span>
+                            </td>
+                            <td class="text-right">
+                                <span class="pill-pct pill-negative">{{ d.negative_pct }}%</span>
+                            </td>
+                            <td class="text-right font-mono">{{ d.average_confidence }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
 
     {% endif %}
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.cat-bar-fill[data-percent]').forEach(function (el) {
-        var p = parseFloat(el.getAttribute('data-percent')) || 0;
-        el.style.width = Math.min(100, Math.max(0, p)) + '%';
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.cat-bar-fill[data-percent]').forEach(function (el) {
+            var p = parseFloat(el.getAttribute('data-percent')) || 0;
+            el.style.width = Math.min(100, Math.max(0, p)) + '%';
+        });
     });
-});
 </script>
 {% endblock %}

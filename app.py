@@ -61,7 +61,19 @@ app.secret_key = os.getenv(
 # DEMO SESSION IDENTIFIER
 # Generates once per Flask application startup (persists on browser refresh)
 # ------------------------------------------------------------
-CURRENT_DEMO_SESSION_ID = f"sess_{uuid.uuid4().hex[:12]}"
+def generate_demo_session_id():
+    """Generates a new unique demo session identifier."""
+    return f"sess_{uuid.uuid4().hex[:12]}"
+
+CURRENT_DEMO_SESSION_ID = generate_demo_session_id()
+
+def reset_demo_session():
+    """Resets the current demo session ID to a fresh unique value."""
+    global CURRENT_DEMO_SESSION_ID
+    CURRENT_DEMO_SESSION_ID = generate_demo_session_id()
+    print(f"[+] Fresh Demo Session Initialized: {CURRENT_DEMO_SESSION_ID}")
+    return CURRENT_DEMO_SESSION_ID
+
 print(f"[+] Active Demo Session: {CURRENT_DEMO_SESSION_ID}")
 
 
@@ -711,6 +723,13 @@ def index():
         metrics=metrics_data,
         demo_session_id=CURRENT_DEMO_SESSION_ID
     )
+
+
+@app.route("/session/new")
+def new_demo_session():
+    """Generates a fresh demo session with zero records and redirects to the home dashboard."""
+    reset_demo_session()
+    return redirect(url_for("index"))
 
 
 # ============================================================
@@ -1672,8 +1691,11 @@ def history_page():
 
     scope = request.args.get(
         "scope",
-        "all"
+        "session"
     ).strip().lower()
+
+    if scope not in {"session", "all"}:
+        scope = "session"
 
     try:
         page = int(request.args.get("page", 1))
@@ -2055,7 +2077,7 @@ def model_performance_page():
 # ADVANCED ANALYTICS (EXTENSION #8)
 # ============================================================
 
-def _fetch_analytics_payload(scope='all', period='daily', date_from='', date_to=''):
+def _fetch_analytics_payload(scope='session', period='daily', date_from='', date_to=''):
     """Helper to query all analytical metrics based on scope, period, and date filters."""
     session_id = CURRENT_DEMO_SESSION_ID if scope == 'session' else None
     d_from = date_from.strip() if date_from else None
@@ -2119,13 +2141,13 @@ def _fetch_analytics_payload(scope='all', period='daily', date_from='', date_to=
 def analytics_page():
     """Renders the Advanced Analytics dashboard page."""
     status = get_db_status()
-    scope = request.args.get("scope", "all").strip().lower()
+    scope = request.args.get("scope", "session").strip().lower()
     period = request.args.get("period", "daily").strip().lower()
     date_from = request.args.get("date_from", "").strip()
     date_to = request.args.get("date_to", "").strip()
 
     if scope not in {"session", "all"}:
-        scope = "all"
+        scope = "session"
     if period not in {"daily", "weekly", "monthly"}:
         period = "daily"
 
@@ -2153,10 +2175,13 @@ def analytics_page():
 @app.route("/api/analytics")
 def api_analytics():
     """Returns structured JSON analytics dataset for API consumers and interactive charts."""
-    scope = request.args.get("scope", "all").strip().lower()
+    scope = request.args.get("scope", "session").strip().lower()
     period = request.args.get("period", "daily").strip().lower()
     date_from = request.args.get("date_from", "").strip()
     date_to = request.args.get("date_to", "").strip()
+
+    if scope not in {"session", "all"}:
+        scope = "session"
 
     payload = _fetch_analytics_payload(
         scope=scope,
@@ -2172,7 +2197,7 @@ def api_analytics():
 # FEEDBACK INSIGHTS (EXTENSION #9)
 # ============================================================
 
-def _fetch_insights_payload(scope="all", date_from="", date_to="", domain="all", sentiment="all"):
+def _fetch_insights_payload(scope="session", date_from="", date_to="", domain="all", sentiment="all"):
     """
     Assembles a complete feedback insights payload from the database:
     summary KPIs, top positive/negative quotes, NLP keywords, problem categories,
@@ -2285,14 +2310,14 @@ def _fetch_insights_payload(scope="all", date_from="", date_to="", domain="all",
 def insights_page():
     """Renders the Feedback Insights dashboard page."""
     status = get_db_status()
-    scope = request.args.get("scope", "all").strip().lower()
+    scope = request.args.get("scope", "session").strip().lower()
     date_from = request.args.get("date_from", "").strip()
     date_to = request.args.get("date_to", "").strip()
     domain = request.args.get("domain", "all").strip()
     sentiment = request.args.get("sentiment", "all").strip().lower()
 
     if scope not in {"session", "all"}:
-        scope = "all"
+        scope = "session"
     if sentiment not in {"all", "positive", "negative", "neutral"}:
         sentiment = "all"
 
@@ -2328,14 +2353,14 @@ def insights_page():
 @app.route("/api/insights")
 def api_insights():
     """Returns structured JSON feedback insights payload for API consumers and testing."""
-    scope = request.args.get("scope", "all").strip().lower()
+    scope = request.args.get("scope", "session").strip().lower()
     date_from = request.args.get("date_from", "").strip()
     date_to = request.args.get("date_to", "").strip()
     domain = request.args.get("domain", "all").strip()
     sentiment = request.args.get("sentiment", "all").strip().lower()
 
     if scope not in {"session", "all"}:
-        scope = "all"
+        scope = "session"
     if sentiment not in {"all", "positive", "negative", "neutral"}:
         sentiment = "all"
 
